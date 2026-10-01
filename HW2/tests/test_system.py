@@ -26,6 +26,10 @@ class SystemTests(ServerCase):
         self.assertEqual(status, 201)
         leave_id = result["id"]
         office = self.login("office", "office123")
+        for reviewer in (office, self.login("teacher1", "teacher123"), self.login("admin", "admin123")):
+            status, requests = self.request("/api/leave", token=reviewer)
+            self.assertEqual(status, 200)
+            self.assertTrue(any(row["id"] == leave_id and row["status"] == "pending" for row in requests))
         self.assertEqual(self.request(f"/api/leave/{leave_id}/review", "POST", {"status": "approved"}, office)[0], 200)
         self.stop_server()
         self.db.initialize()

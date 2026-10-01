@@ -2,7 +2,7 @@
 
 以 Python、SQLite 與原生 HTML / CSS / JavaScript 建立的校務系統，支援管理員、行政、學生與老師。開發規畫與進度請見 [plan.md](plan.md)。
 
-**本次依使用者要求未執行測試。** 功能與三類測試程式碼已建立，尚未啟動驗證。執行環境需自行準備 Python 3.11 以上。
+**已依測試規畫執行驗證：21 項測試全部通過。** 包含 10 項單元、7 項系統及 4 項真實瀏覽器 E2E 測試；執行環境、修正與驗證限制請見 [test-report.md](test-report.md)。啟動環境需 Python 3.11 以上。
 
 ## 啟動方式
 
@@ -148,7 +148,7 @@ def list_grades(context):
     return []
 ```
 
-## 測試來源（本次未執行）
+## 測試來源（已執行通過）
 
 | 類別 | 檔案 | 範圍 |
 | --- | --- | --- |
@@ -168,4 +168,4 @@ def list_grades(context):
 .\.venv\Scripts\python.exe -m unittest tests.test_e2e -v
 ```
 
-瀏覽器安裝方式參考 [Playwright 官方文件](https://playwright.dev/python/docs/library)。本次沒有安裝測試依賴或執行以上指令，不宣稱測試通過。
+瀏覽器安裝方式參考 [Playwright 官方文件](https://playwright.dev/python/docs/library)。本次使用專案內 `.runtime/python/python.exe` 與已安裝的 Edge 驗證；重現命令請見 [test-report.md](test-report.md)。

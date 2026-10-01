@@ -1,4 +1,5 @@
 import hashlib
+from contextlib import closing
 import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -25,6 +26,9 @@ class UnitTests(DatabaseCase):
     def test_seed_idempotency_and_constraints(self):
         self.db.initialize()
         with self.db.connection() as conn:
+            tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            self.assertTrue({"users", "courses", "enrollments", "leave_requests", "sessions",
+                             "settings", "audit_logs", "metadata"}.issubset(tables))
             self.assertEqual(conn.execute("SELECT count(*) FROM users").fetchone()[0], 5)
             self.assertEqual(conn.execute("SELECT count(*) FROM courses").fetchone()[0], 3)
             with self.assertRaises(sqlite3.IntegrityError):
@@ -97,5 +101,5 @@ class UnitTests(DatabaseCase):
         self.assertEqual(enrollment.schedule(self.db, self.users["student1"]), [])
         self.assertEqual(leave.list_requests(self.db, self.users["student1"]), [])
         backup = self.db.backup()
-        with sqlite3.connect(backup) as conn:
+        with closing(sqlite3.connect(backup)) as conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM users").fetchone()[0], 5)

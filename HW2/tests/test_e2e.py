@@ -17,18 +17,29 @@ class BrowserTests(ServerCase):
         self.page.goto(self.base)
 
     def login_ui(self, username, password):
-        self.page.get_by_label("帳號", exact=True).fill(username)
-        self.page.get_by_label("密碼", exact=True).fill(password)
+        form = self.page.locator("#login-form")
+        form.get_by_label("帳號", exact=True).fill(username)
+        form.get_by_label("密碼", exact=True).fill(password)
         self.page.get_by_role("button", name="登入", exact=True).click()
         expect(self.page.locator("#portal")).to_be_visible()
         expect(self.page.locator("#content")).to_contain_text("程式設計")
 
     def test_student_enrollment_and_leave_review(self):
         self.login_ui("student1", "student123")
+        self.page.get_by_label("課程搜尋").fill("程式設計")
+        self.page.get_by_role("button", name="搜尋", exact=True).click()
+        expect(self.page.locator("#content")).not_to_contain_text("資料庫系統")
         self.page.get_by_role("row").filter(has_text="程式設計").get_by_role("button", name="選課", exact=True).click()
         expect(self.page.locator("#message")).to_have_text("選課成功")
         self.page.get_by_role("button", name="我的課表", exact=True).click()
         expect(self.page.locator("#content")).to_contain_text("A101")
+        expect(self.page.get_by_role("columnheader", name="星期一", exact=True)).to_be_visible()
+        for period in (1, 2, 3):
+            row = self.page.get_by_role("row").filter(
+                has=self.page.get_by_role("cell", name=f"第 {period} 節", exact=True)
+            )
+            expect(row.get_by_role("cell").nth(1)).to_contain_text("程式設計")
+            expect(row.get_by_role("cell").nth(1)).to_contain_text("A101")
         self.page.get_by_role("button", name="請假申請", exact=True).click()
         self.page.get_by_label("開始日期").fill("2026-10-05")
         self.page.get_by_label("結束日期").fill("2026-10-05")
@@ -62,6 +73,12 @@ class BrowserTests(ServerCase):
         self.assertEqual(response.status, 403)
         response = self.page.request.post(self.base + "/api/enroll", data={"course_id": 999}, headers={"X-Requested-With": "SchoolPortal"})
         self.assertEqual(response.status, 404)
+        with self.db.connection(write=True) as conn:
+            conn.execute("UPDATE sessions SET expires_at=0")
+        response = self.page.request.get(self.base + "/api/schedule")
+        self.assertEqual(response.status, 403)
+        self.page.reload()
+        expect(self.page.locator("#login-view")).to_be_visible()
         self.page.context.clear_cookies()
         self.page.context.add_cookies([{"name": "session", "value": "forged", "url": self.base}])
         self.page.reload()

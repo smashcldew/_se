@@ -1,0 +1,9 @@
+.runtime/
+.venv/
+data/
+logs/
+__pycache__/
+*.db
+*.db-shm
+*.db-wal
+*.pem

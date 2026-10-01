@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>校務系統</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <section id="login-view" class="login-layout">
+    <div class="intro"><span class="eyebrow">CAMPUS PORTAL / HW2</span><h1>校園生活，<br>從這裡開始。</h1><p>課程、課表與請假，集中在一個入口。</p><div class="intro-note">學生・教師・行政・管理員</div></div>
+    <div class="login-panel"><h2>登入校務系統</h2><p class="muted">請使用您的校務帳號。</p>
+      <form id="login-form"><label>帳號<input name="username" autocomplete="username" required maxlength="64"></label><label>密碼<input name="password" type="password" autocomplete="current-password" required maxlength="128"></label><button type="submit">登入</button></form>
+      <p id="login-error" class="error" role="alert"></p>
+      <details><summary>示範帳號</summary><table><thead><tr><th>角色</th><th>帳號 / 密碼</th></tr></thead><tbody><tr><td>學生</td><td>student1 / student123</td></tr><tr><td>教師</td><td>teacher1 / teacher123</td></tr><tr><td>行政</td><td>office / office123</td></tr><tr><td>管理員</td><td>admin / admin123</td></tr></tbody></table></details>
+    </div>
+  </section>
+  <div id="portal" hidden>
+    <aside><a class="brand" href="/">校務系統 <small>Campus Portal</small></a><nav id="navigation" aria-label="主要導覽"></nav><div class="sidebar-foot">HW2 · 學習與教學的日常</div></aside>
+    <div class="workspace"><header><div><span id="semester" class="muted"></span><h1 id="page-title">課程查詢</h1></div><div class="account"><span id="identity"></span><button class="secondary" id="logout">登出</button></div></header>
+      <main><div id="message" role="status" hidden></div><div id="content"></div></main>
+    </div>
+  </div>
+  <dialog id="editor"><div class="dialog-head"><h2 id="editor-title"></h2><button id="close-editor" class="secondary" type="button">關閉</button></div><form id="editor-form"></form><p id="editor-error" class="error" role="alert"></p></dialog>
+</body>
+</html>

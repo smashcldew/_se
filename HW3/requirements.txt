@@ -1,0 +1,9 @@
+# Python >= 3.11
+# Runtime dependencies (keep aligned with pyproject.toml)
+certifi>=2024.0.0
+matplotlib>=3.8
+
+# Tests
+pytest>=8.0
+
+# tkinter is supplied by the Python installation, not pip.

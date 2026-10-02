@@ -25,3 +25,4 @@ class Quote:
     volume: int
     change: Decimal | None
     change_percent: Decimal | None
+    industry: str = "未分類"

@@ -7,7 +7,9 @@ from threading import Thread
 from tkinter import messagebox, ttk
 
 from .indicators import kdj_series, moving_averages
-from .providers import DataProviderError, TwseProvider
+from .providers import DataProviderError, StockProvider, clear_cache
+from .tables import leaderboard_rows
+from .industries import ALL_INDUSTRIES, INDUSTRIES, UNKNOWN_INDUSTRY
 
 
 def _money(value: Decimal | None) -> str:
@@ -65,51 +67,89 @@ def _chart_day_ticks(dates: list[date]) -> tuple[list[int], list[str]]:
 
 class StockFollowerWindow:
     def __init__(self) -> None:
+        clear_cache()
+        self._history_chart_data = None
         self.root = tk.Tk()
         self.root.title("StockFollower - Taiwan Stock Desktop")
-        self.root.minsize(760, 650)
-        self.provider = TwseProvider()
+        self.root.geometry("1400x800")
+        self.root.minsize(1100, 650)
+        self.provider = StockProvider()
         self.symbol = tk.StringVar(value="2330")
         self.refresh = tk.BooleanVar(value=False)
+        self.leaderboard_refresh = tk.BooleanVar(value=False)
         self.ranking = tk.StringVar(value="Volume")
+        self.industry = tk.StringVar(value=ALL_INDUSTRIES)
         self.chart_interval = tk.StringVar(value="Day")
-        self.history_months = tk.IntVar(value=3)
+        self.history_months = tk.StringVar(value="3")
         self.status = tk.StringVar(value="Enter a stock symbol to get started.")
+        self.leaderboard_status = tk.StringVar(value="Choose a ranking to get started.")
+        self.leaderboard_title = tk.StringVar(value="TWSE Top 20")
         self._build()
 
     def _build(self) -> None:
         frame = ttk.Frame(self.root, padding=16)
         frame.pack(fill=tk.BOTH, expand=True)
+        frame.rowconfigure(0, weight=1)
+        # A shared uniform group keeps the total column widths at 7:3,
+        # independently of the requested widths of charts and tables.
+        frame.columnconfigure(0, weight=7, uniform="main")
+        frame.columnconfigure(1, weight=3, uniform="main")
+        self.stock_container = ttk.LabelFrame(frame, text="個股", padding=10)
+        self.stock_container.grid(row=0, column=0, sticky="nsew")
+        self.leaderboard_container = ttk.LabelFrame(frame, text="排行榜", padding=10)
+        self.leaderboard_container.grid(row=0, column=1, sticky="nsew")
+        self.stock_container.grid_propagate(False)
+        self.leaderboard_container.grid_propagate(False)
+        self.stock_container.columnconfigure(0, weight=1)
+        self.stock_container.rowconfigure(3, weight=1)
+        self.leaderboard_container.columnconfigure(0, weight=1)
+        self.leaderboard_container.rowconfigure(3, weight=1)
 
-        controls = ttk.Frame(frame)
-        controls.pack(fill=tk.X)
+        controls = ttk.Frame(self.stock_container)
+        controls.grid(row=0, column=0, sticky="ew")
         ttk.Label(controls, text="Symbol:").pack(side=tk.LEFT)
         entry = ttk.Entry(controls, width=12, textvariable=self.symbol)
         entry.pack(side=tk.LEFT)
         entry.bind("<Return>", lambda _event: self.show_quote())
         ttk.Checkbutton(controls, text="Refresh cache", variable=self.refresh).pack(side=tk.LEFT, padx=(12, 16))
-        ttk.Button(controls, text="Latest close", command=self.show_quote).pack(side=tk.LEFT, padx=3)
-        ttk.Button(controls, text="History", command=self.show_history).pack(side=tk.LEFT, padx=3)
-        ttk.Button(controls, text="Report", command=self.show_report).pack(side=tk.LEFT, padx=3)
-        ttk.Label(controls, text="Leaderboard:").pack(side=tk.LEFT, padx=(12, 0))
-        ttk.Combobox(
-            controls, textvariable=self.ranking, values=("Volume", "Gainers", "Losers"), width=7, state="readonly"
-        ).pack(side=tk.LEFT)
-        ttk.Button(controls, text="Show leaderboard", command=self.show_leaderboard).pack(side=tk.LEFT, padx=3)
+        stock_actions = ttk.Frame(self.stock_container)
+        stock_actions.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(stock_actions, text="Latest close", command=self.show_quote).pack(side=tk.LEFT, padx=3)
+        ttk.Button(stock_actions, text="History", command=self.show_history).pack(side=tk.LEFT, padx=3)
+        ttk.Button(stock_actions, text="Report", command=self.show_report).pack(side=tk.LEFT, padx=3)
 
-        chart_controls = ttk.Frame(frame)
-        chart_controls.pack(fill=tk.X, pady=(8, 0))
-        ttk.Label(chart_controls, text="Chart interval:").pack(side=tk.LEFT)
+        ranking_controls = ttk.Frame(self.leaderboard_container)
+        ranking_controls.grid(row=0, column=0, sticky="ew")
+        ttk.Label(ranking_controls, text="Leaderboard:").pack(side=tk.LEFT)
         ttk.Combobox(
-            chart_controls, textvariable=self.chart_interval, values=("Day", "Week", "Month", "Year"), width=5, state="readonly"
+            ranking_controls, textvariable=self.ranking, values=("Volume", "Gainers", "Losers"), width=9, state="readonly"
         ).pack(side=tk.LEFT)
+        leaderboard_controls = ttk.Frame(self.leaderboard_container)
+        leaderboard_controls.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        ttk.Button(leaderboard_controls, text="Show leaderboard", command=self.show_leaderboard).pack(anchor=tk.W)
+        ttk.Label(leaderboard_controls, text="行業篩選：").pack(anchor=tk.W, pady=(4, 0))
+        self.industry_filter = ttk.Combobox(
+            leaderboard_controls, textvariable=self.industry,
+            values=(ALL_INDUSTRIES, *INDUSTRIES.values(), UNKNOWN_INDUSTRY), width=20, state="readonly",
+        )
+        self.industry_filter.pack(anchor=tk.W)
+        self.industry_filter.bind("<<ComboboxSelected>>", lambda _event: self.show_leaderboard())
+        ttk.Checkbutton(leaderboard_controls, text="Refresh cache", variable=self.leaderboard_refresh).pack(anchor=tk.W, pady=(4, 0))
+
+        chart_controls = ttk.Frame(self.stock_container)
+        chart_controls.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        ttk.Label(chart_controls, text="Chart interval:").pack(side=tk.LEFT)
+        interval_selector = ttk.Combobox(
+            chart_controls, textvariable=self.chart_interval, values=("Day", "Week", "Month", "Year"), width=5, state="readonly"
+        )
+        interval_selector.pack(side=tk.LEFT)
+        interval_selector.bind("<<ComboboxSelected>>", self._redraw_history_chart)
         ttk.Label(chart_controls, text="  Range:").pack(side=tk.LEFT)
         ttk.Spinbox(chart_controls, from_=1, to=24, width=4, textvariable=self.history_months).pack(side=tk.LEFT)
         ttk.Label(chart_controls, text="months").pack(side=tk.LEFT)
-        ttk.Label(chart_controls, text="(Chart redraws when the interval changes.)").pack(side=tk.LEFT, padx=8)
 
-        self.content = ttk.PanedWindow(frame, orient=tk.VERTICAL)
-        self.content.pack(fill=tk.BOTH, expand=True, pady=(14, 8))
+        self.content = ttk.PanedWindow(self.stock_container, orient=tk.VERTICAL)
+        self.content.grid(row=3, column=0, sticky="nsew", pady=(14, 8))
         self.output = tk.Text(self.content, wrap=tk.WORD, font=("Consolas", 11), state=tk.DISABLED, height=12)
         self.chart_frame = ttk.Frame(self.content)
         ttk.Label(
@@ -119,7 +159,29 @@ class StockFollowerWindow:
         ).pack(fill=tk.BOTH, expand=True)
         self.content.add(self.output, weight=1)
         self.content.add(self.chart_frame, weight=2)
-        ttk.Label(frame, textvariable=self.status).pack(anchor=tk.W)
+        output_scroll = ttk.Scrollbar(self.stock_container, orient=tk.HORIZONTAL, command=self.output.xview)
+        output_scroll.grid(row=4, column=0, sticky="ew")
+        self.output.configure(xscrollcommand=output_scroll.set)
+        ttk.Label(self.stock_container, textvariable=self.status).grid(row=5, column=0, sticky="w")
+
+        ttk.Label(self.leaderboard_container, textvariable=self.leaderboard_title).grid(row=2, column=0, sticky="w", pady=8)
+        table_frame = ttk.Frame(self.leaderboard_container)
+        table_frame.grid(row=3, column=0, sticky="nsew")
+        table_frame.rowconfigure(0, weight=1)
+        table_frame.columnconfigure(0, weight=1)
+        columns = ("rank", "symbol", "name", "close", "change", "volume", "industry")
+        self.leaderboard_table = ttk.Treeview(table_frame, columns=columns, show="headings")
+        for column, heading, width in zip(columns, ("排名", "代號", "名稱", "收盤", "漲跌幅", "成交量", "行業"), (48, 64, 110, 90, 85, 110, 140)):
+            anchor = tk.W if column in ("symbol", "name", "industry") else tk.E
+            self.leaderboard_table.heading(column, text=heading, anchor=anchor)
+            self.leaderboard_table.column(column, width=width, minwidth=width, stretch=False, anchor=anchor)
+        self.leaderboard_table.grid(row=0, column=0, sticky="nsew")
+        table_vertical = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.leaderboard_table.yview)
+        table_vertical.grid(row=0, column=1, sticky="ns")
+        table_horizontal = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL, command=self.leaderboard_table.xview)
+        table_horizontal.grid(row=1, column=0, sticky="ew")
+        self.leaderboard_table.configure(yscrollcommand=table_vertical.set, xscrollcommand=table_horizontal.set)
+        ttk.Label(self.leaderboard_container, textvariable=self.leaderboard_status).grid(row=4, column=0, sticky="w", pady=(8, 0))
         entry.focus_set()
 
     def _symbol(self) -> str:
@@ -128,16 +190,24 @@ class StockFollowerWindow:
             raise ValueError("Stock symbol must be a 4-digit number, e.g. 2330.")
         return symbol
 
-    def _run(self, work, on_success=None) -> None:  # type: ignore[no-untyped-def]
-        self.status.set("Loading...")
+    def _run(self, work, on_success=None, *, status=None) -> None:  # type: ignore[no-untyped-def]
+        target_status = self.status if status is None else status
+        target_status.set("Loading...")
+
+        def show_error(message: str) -> None:
+            if status is None:
+                self._show_error(message)
+            else:
+                target_status.set("Request failed.")
+                messagebox.showerror("StockFollower", message, parent=self.root)
 
         def runner() -> None:
             try:
                 result = work()
             except (DataProviderError, ValueError) as exc:
-                self.root.after(0, lambda: self._show_error(str(exc)))
+                self.root.after(0, lambda message=str(exc): show_error(message))
             except Exception as exc:  # pragma: no cover - unexpected UI failure
-                self.root.after(0, lambda: self._show_error(f"Unexpected error: {exc}"))
+                self.root.after(0, lambda message=f"Unexpected error: {exc}": show_error(message))
             else:
                 callback = on_success or self._show_result
                 self.root.after(0, lambda: callback(result))
@@ -146,7 +216,7 @@ class StockFollowerWindow:
 
     def _show_result(self, text: str) -> None:
         self._show_text_output()
-        self.output.configure(state=tk.NORMAL)
+        self.output.configure(state=tk.NORMAL, wrap=tk.WORD)
         self.output.delete("1.0", tk.END)
         self.output.insert(tk.END, text)
         self.output.configure(state=tk.DISABLED)
@@ -173,10 +243,7 @@ class StockFollowerWindow:
         refresh = self.refresh.get()
 
         def work() -> str:
-            quotes = self.provider.latest_quotes(refresh)
-            item = next((row for row in quotes if row.symbol == symbol), None)
-            if item is None:
-                raise DataProviderError(f"Listed stock {symbol} was not found.")
+            item = self.provider.get_quote(symbol, refresh)
             averages = moving_averages(self.provider.history(symbol, months=3, refresh=refresh))
             pct = "-" if item.change_percent is None else f"{item.change_percent:+.2f}%"
             lines = [
@@ -198,8 +265,11 @@ class StockFollowerWindow:
             self._show_error(str(exc))
             return
         refresh = self.refresh.get()
-        interval = self.chart_interval.get()
-        months = self.history_months.get()
+        try:
+            months = int(self.history_months.get())
+        except (tk.TclError, ValueError):
+            self._show_error("History range must be a whole number between 1 and 24 months.")
+            return
         if not 1 <= months <= 24:
             self._show_error("History range must be between 1 and 24 months.")
             return
@@ -220,10 +290,16 @@ class StockFollowerWindow:
         def show_history_result(result: tuple[str, list]) -> None:
             _, bars = result
             self._hide_text_output()
-            self._show_history_chart(bars, symbol, interval)
+            self._history_chart_data = (bars, symbol)
+            self._redraw_history_chart()
             self.status.set("Done.")
 
         self._run(work, show_history_result)
+
+    def _redraw_history_chart(self, _event=None) -> None:
+        if self._history_chart_data is not None:
+            bars, symbol = self._history_chart_data
+            self._show_history_chart(bars, symbol, self.chart_interval.get())
 
     def _show_history_chart(self, bars: list, symbol: str, interval: str) -> None:  # type: ignore[type-arg]
         try:
@@ -335,10 +411,7 @@ class StockFollowerWindow:
         refresh = self.refresh.get()
 
         def work() -> str:
-            quotes = self.provider.latest_quotes(refresh)
-            item = next((row for row in quotes if row.symbol == symbol), None)
-            if item is None:
-                raise DataProviderError(f"Listed stock {symbol} was not found.")
+            item = self.provider.get_quote(symbol, refresh)
             averages = moving_averages(self.provider.history(symbol, months=6, refresh=refresh))
             technical = "\n".join(
                 f"- MA{period}: {_money(value)} ({'insufficient data' if value is None else 'close above MA' if item.close > value else 'close below MA'})"
@@ -355,11 +428,15 @@ class StockFollowerWindow:
         self._run(work)
 
     def show_leaderboard(self) -> None:
-        refresh = self.refresh.get()
+        refresh = self.leaderboard_refresh.get()
         ranking = self.ranking.get()
+        industry = self.industry.get()
 
-        def work() -> str:
-            rows = self.provider.latest_quotes(refresh)
+        def work() -> tuple[str, list[list[str]], list[str]]:
+            rows = self.provider.leaderboard_quotes(refresh)
+            available = sorted({row.industry for row in rows})
+            if industry != ALL_INDUSTRIES:
+                rows = [row for row in rows if row.industry == industry]
             if ranking == "Volume":
                 rows.sort(key=lambda row: row.volume, reverse=True)
                 title = "Volume"
@@ -367,15 +444,26 @@ class StockFollowerWindow:
                 rows = [row for row in rows if row.change_percent is not None]
                 rows.sort(key=lambda row: row.change_percent or Decimal("0"), reverse=ranking == "Gainers")
                 title = ranking
-            lines = [f"TWSE Top 20 by {title}", "Rank  Symbol  Name          Close       Change %        Volume"]
-            for rank, row in enumerate(rows, start=1):
-                pct = "-" if row.change_percent is None else f"{row.change_percent:+.2f}%"
-                lines.append(f"{rank:>2}  {row.symbol}  {row.name:<10.10}  {row.close:>8}  {pct:>9}  {row.volume:>12,}")
-                if rank == 20:
-                    break
-            return "\n".join(lines)
+            return f"TWSE Top 20 by {title} — {industry}", leaderboard_rows(rows[:20]), available
 
-        self._run(work)
+        def on_success(result) -> None:
+            # A slower previous selection must not overwrite the current filter.
+            if self.industry.get() != industry or self.ranking.get() != ranking:
+                return
+            title, rows, available = result
+            self.industry_filter.configure(values=(ALL_INDUSTRIES, *dict.fromkeys([*INDUSTRIES.values(), *available, UNKNOWN_INDUSTRY])))
+            self._show_leaderboard_result((title, rows))
+
+        self._run(work, on_success, status=self.leaderboard_status)
+
+    def _show_leaderboard_result(self, result: tuple[str, list[list[str]]]) -> None:
+        title, rows = result
+        self.leaderboard_title.set(title)
+        for item in self.leaderboard_table.get_children():
+            self.leaderboard_table.delete(item)
+        for row in rows:
+            self.leaderboard_table.insert("", tk.END, values=row)
+        self.leaderboard_status.set("Done." if rows else "此篩選條件沒有可用的排行資料。")
 
     def run(self) -> None:
         self.root.mainloop()

@@ -4,23 +4,22 @@ import argparse
 from decimal import Decimal
 
 from .indicators import moving_averages
-from .providers import DataProviderError, TwseProvider
+from .providers import DataProviderError, StockProvider, clear_cache
+from .tables import format_table, leaderboard_rows
 
 
 def _money(value: Decimal | None) -> str:
     return "-" if value is None else f"{value:,.2f}"
 
 
-def _provider() -> TwseProvider:
-    return TwseProvider()
+def _provider() -> StockProvider:
+    return StockProvider()
 
 
 def quote(args: argparse.Namespace) -> None:
-    quotes = _provider().latest_quotes(args.refresh)
-    item = next((row for row in quotes if row.symbol == args.symbol), None)
-    if item is None:
-        raise DataProviderError(f"找不到上市股票 {args.symbol}。上櫃股票資料將在下一版加入。")
-    history = _provider().history(args.symbol, months=3, refresh=args.refresh)
+    provider = _provider()
+    item = provider.get_quote(args.symbol, args.refresh)
+    history = provider.history(args.symbol, months=3, refresh=args.refresh)
     averages = moving_averages(history)
     print(f"{item.symbol} {item.name}（{item.market}）")
     print(f"收盤：{_money(item.close)}  漲跌：{_money(item.change)}  漲跌幅：{_money(item.change_percent)}%")
@@ -39,7 +38,7 @@ def history(args: argparse.Namespace) -> None:
 
 
 def leaderboard(args: argparse.Namespace) -> None:
-    rows = _provider().latest_quotes(args.refresh)
+    rows = _provider().leaderboard_quotes(args.refresh)
     if args.by == "volume":
         rows.sort(key=lambda row: row.volume, reverse=True)
         title = "成交量"
@@ -48,18 +47,14 @@ def leaderboard(args: argparse.Namespace) -> None:
         rows.sort(key=lambda row: row.change_percent or Decimal("0"), reverse=True)
         title = "漲跌幅"
     print(f"台股上市個股 {title} 前 {args.limit} 名")
-    print("排名  代號  名稱          收盤       漲跌幅         成交量")
-    for rank, row in enumerate(rows[:args.limit], start=1):
-        pct = "-" if row.change_percent is None else f"{row.change_percent:+.2f}%"
-        print(f"{rank:>2}  {row.symbol}  {row.name:<10.10}  {row.close:>8}  {pct:>9}  {row.volume:>12,}")
+    print(format_table(["排名", "代號", "名稱", "收盤", "漲跌幅", "成交量", "行業"],
+                       leaderboard_rows(rows[:args.limit])))
 
 
 def report(args: argparse.Namespace) -> None:
-    quotes = _provider().latest_quotes(args.refresh)
-    item = next((row for row in quotes if row.symbol == args.symbol), None)
-    if item is None:
-        raise DataProviderError(f"找不到上市股票 {args.symbol}")
-    bars = _provider().history(args.symbol, months=6, refresh=args.refresh)
+    provider = _provider()
+    item = provider.get_quote(args.symbol, args.refresh)
+    bars = provider.history(args.symbol, months=6, refresh=args.refresh)
     averages = moving_averages(bars)
     print(f"# {item.symbol} {item.name} 個股評估報告")
     print(f"\n## 市場資料\n- 市場：{item.market}\n- 收盤：{_money(item.close)}\n- 當日漲跌幅：{_money(item.change_percent)}%\n- 成交量：{item.volume:,} 股")
@@ -101,6 +96,8 @@ def launch_gui(args: argparse.Namespace) -> None:
 def main() -> None:
     args = build_parser().parse_args()
     try:
+        if args.command != "gui":
+            clear_cache()
         args.handler(args)
     except (DataProviderError, ValueError) as exc:
         raise SystemExit(f"錯誤：{exc}")

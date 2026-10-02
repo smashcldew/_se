@@ -23,3 +23,9 @@ fork需要在github上向別人的倉庫執行fork
 複製一個到自己的倉庫
 
 4.
+pull request
+需要在fork出去的專案執行:
+git add -A
+git commit "..."
+git push
+最後,在github上發出"compare&pull request"

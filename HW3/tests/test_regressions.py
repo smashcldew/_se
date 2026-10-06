@@ -1,6 +1,7 @@
 import tempfile
 import tkinter as tk
 import unittest
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -120,13 +121,72 @@ class RegressionTests(unittest.TestCase):
 
     def test_interval_redraw_uses_loaded_symbol_and_current_interval(self):
         window = object.__new__(gui.StockFollowerWindow)
-        bars = [object()]
+        bars = [SimpleNamespace(trade_date=date(2026, 10, 1), open=100, high=110, low=90, close=105)]
         window._history_chart_data = (bars, '2330')
+        window.symbol = Mock()
+        window.symbol.get.return_value = '2330'
+        window.latest_signal = Mock()
         window.chart_interval = Mock()
         window.chart_interval.get.return_value = 'Week'
         window._show_history_chart = Mock()
         window._redraw_history_chart()
         window._show_history_chart.assert_called_once_with(bars, '2330', 'Week')
+        self.assertIn('此範圍無訊號', window.latest_signal.set.call_args.args[0])
+
+    def test_search_updates_chart_and_latest_close_ignoring_stale_symbol(self):
+        window = object.__new__(gui.StockFollowerWindow)
+        window.symbol = Mock()
+        window.symbol.get.return_value = '2330'
+        window.refresh = Mock()
+        window.refresh.get.return_value = False
+        window.history_months = Mock()
+        window.history_months.get.return_value = '3'
+        window.provider = Mock()
+        bars = [SimpleNamespace(trade_date=date(2026, 10, day),
+                                open=Decimal('1000'), high=Decimal('1250'),
+                                low=Decimal('990'), close=Decimal(close), volume=1000)
+                for day, close in [(2, '1234.5'), (1, '1000')]]
+        window.provider.history.return_value = bars
+        window.provider.get_quote.return_value = SimpleNamespace(
+            symbol='2330', name='TSMC', market='TWSE', close=Decimal('1234.5'),
+            change_percent=Decimal('1.2'), volume=1000)
+        window.latest_close = Mock()
+        window._show_result = Mock()
+        window._redraw_history_chart = Mock()
+        window.status = Mock()
+        window._run = Mock()
+
+        window.show_history()
+        work, on_success = window._run.call_args.args
+        result = work()
+        window.provider.history.assert_called_once_with('2330', months=3, refresh=False)
+        on_success(result)
+        window.latest_close.set.assert_called_once_with('上一次收盤價：1,234.50')
+        self.assertEqual(window._history_chart_data, (sorted(bars, key=lambda bar: bar.trade_date), '2330'))
+        window._show_result.assert_called_once()
+        self.assertIn('TSMC Stock Report', window._show_result.call_args.args[0])
+        window._redraw_history_chart.assert_called_once()
+
+        window.latest_close.reset_mock()
+        window._redraw_history_chart.reset_mock()
+        window.symbol.get.return_value = '2317'
+        on_success(result)
+        window.latest_close.set.assert_not_called()
+        window._redraw_history_chart.assert_not_called()
+
+    def test_latest_cross_summary_uses_detector_date_and_matching_close(self):
+        ohlc = [(date(2026, 10, day), 100, 110, 90, close)
+                for day, close in [(1, 101), (2, 102), (5, 105)]]
+        golden = gui.Signal(date(2026, 10, 1), 'golden_cross')
+        death = gui.Signal(date(2026, 10, 2), 'death_cross')
+        summary = gui._latest_signal_text(ohlc, [death, golden])
+        self.assertIn('上一次交叉：D（2026/10/02）', summary)
+        self.assertIn('建議賣出（D）', summary)
+        self.assertIn('交叉價格：102.00', summary)
+        summary = gui._latest_signal_text(ohlc, [golden])
+        self.assertIn('建議買進（G）', summary)
+        self.assertIn('交叉價格：101.00', summary)
+        self.assertIn('此範圍無訊號', gui._latest_signal_text(ohlc, []))
 
 
 if __name__ == '__main__':

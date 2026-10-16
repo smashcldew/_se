@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Docker 微服務展示</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <p class="eyebrow">DOCKER COMPOSE · MICROSERVICES</p>
+      <h1>容器裡的小型服務群</h1>
+      <p class="intro">瀏覽器只連到 Nginx。留言、統計與質數運算由不同服務處理，資料則留在 PostgreSQL 的 named volume。</p>
+      <div class="concepts"><span>Image = 可重複使用的建置成果</span><span>Container = 正在執行的隔離程序</span><span>Network = 服務名稱互相尋址</span><span>Volume = 容器之外的持久資料</span></div>
+    </header>
+
+    <section class="status-section">
+      <div class="section-heading"><div><p class="eyebrow">LIVE STATUS</p><h2>服務狀態</h2></div><span class="muted">每 5 秒更新</span></div>
+      <div class="service-grid">
+        <article class="service" data-service="node"><span class="icon">JS</span><div><strong>Node API</strong><small>留言與 PostgreSQL</small></div><span class="pill"><i></i>檢查中</span></article>
+        <article class="service" data-service="python"><span class="icon">Py</span><div><strong>Python API</strong><small>留言統計</small></div><span class="pill"><i></i>檢查中</span></article>
+        <article class="service" data-service="rust"><span class="icon">Rs</span><div><strong>Rust API</strong><small>質數運算</small></div><span class="pill"><i></i>檢查中</span></article>
+        <article class="service" data-service="db"><span class="icon db-icon">DB</span><div><strong>PostgreSQL</strong><small>named volume 儲存</small></div><span class="pill"><i></i>檢查中</span></article>
+      </div>
+      <p class="hint">可在終端機執行 <code>docker compose stop python</code>，觀察 Python 變紅；Node 留言與 Rust 計算仍可使用。</p>
+    </section>
+
+    <section class="work-grid">
+      <article class="panel guestbook">
+        <div class="section-heading"><div><p class="eyebrow">NODE + POSTGRES</p><h2>留言板</h2></div><span class="tag">寫入與查詢</span></div>
+        <form id="message-form"><label>你的名字<input name="name" maxlength="40" placeholder="例如：小明" required></label><label>留言內容<textarea name="message" maxlength="500" rows="3" placeholder="分享你觀察到的容器概念…" required></textarea></label><button type="submit">送出留言 <span>↗</span></button><p id="form-note" class="form-note" aria-live="polite"></p></form>
+        <div id="messages" class="messages"><p class="muted">載入留言中…</p></div>
+      </article>
+      <article class="panel stats-panel">
+        <div class="section-heading"><div><p class="eyebrow">PYTHON + POSTGRES</p><h2>文字統計</h2></div><span class="tag">即時計算</span></div>
+        <div class="stat-numbers"><div><strong id="message-count">—</strong><span>則留言</span></div><div><strong id="average-length">—</strong><span>平均字數</span></div></div>
+        <h3>常見字詞</h3><div id="top-words" class="word-list"><span class="muted">等待統計資料…</span></div>
+        <div class="prime-box"><div><p class="eyebrow">RUST SERVICE</p><h3>質數計算</h3></div><label>上限<input id="prime-limit" type="number" min="2" max="10000" value="100"></label><button id="prime-button" type="button" class="secondary">計算</button><p id="prime-result" class="prime-result">計算 2 到 100 之間的質數</p></div>
+      </article>
+    </section>
+
+    <footer><span>Docker Compose 示範專案</span><span>nginx → node / python / rust → postgres</span></footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

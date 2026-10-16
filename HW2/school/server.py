@@ -79,17 +79,17 @@ def build_router(secure=False):
     router.add("DELETE", "/api/courses/{id}", lambda c: courses.delete_course(c.db, c.user, c.params["id"]), roles=("admin", "administrative"))
     router.add("POST", "/api/enroll", lambda c: enrollment.enroll(c.db, c.user, c.data), roles=("student",))
     router.add("DELETE", "/api/enroll/{id}", lambda c: enrollment.withdraw(c.db, c.user, c.params["id"]), roles=("student",))
-    router.add("GET", "/api/schedule", lambda c: enrollment.schedule(c.db, c.user))
+    router.add("GET", "/api/schedule", lambda c: enrollment.schedule(c.db, c.user), roles=("student", "teacher", "admin"))
     router.add("GET", "/api/leave", lambda c: leave.list_requests(c.db, c.user))
     router.add("POST", "/api/leave", lambda c: leave.submit(c.db, c.user, c.data), roles=("student",))
-    router.add("POST", "/api/leave/{id}/review", lambda c: leave.review(c.db, c.user, c.data, c.params["id"]), roles=("admin", "administrative", "teacher"))
+    router.add("POST", "/api/leave/{id}/review", lambda c: leave.review(c.db, c.user, c.data, c.params["id"]), roles=("teacher",))
     router.add("GET", "/api/audit", lambda c: admin.logs(c.db, c.user), roles=("admin",))
     router.add("POST", "/api/backup", lambda c: admin.backup(c.db, c.user), roles=("admin",))
     extensions.register(router)
     return router
 
 
-def create_server(database, host="127.0.0.1", port=8000, secure=False):
+def create_server(database, host="127.0.0.1", port=5500, secure=False):
     router = build_router(secure)
 
     class Handler(BaseHTTPRequestHandler):
@@ -102,7 +102,7 @@ def create_server(database, host="127.0.0.1", port=8000, secure=False):
         def log_message(self, format, *args):
             logging.info("HTTP %s %s", self.command, urlparse(self.path).path)
 
-        def response(self, content, status=200, mime="application/json; charset=utf-8", cookie=None):
+        def response(self, content, status=200, mime="application/json; charset=utf-8", cookie=None, location=None):
             if not isinstance(content, bytes):
                 content = json.dumps(content, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
@@ -116,15 +116,17 @@ def create_server(database, host="127.0.0.1", port=8000, secure=False):
                 self.send_header("Strict-Transport-Security", "max-age=31536000")
             if cookie:
                 self.send_header("Set-Cookie", cookie)
+            if location:
+                self.send_header("Location", location)
             self.end_headers()
             self.wfile.write(content)
 
-        def read_body(self):
+        def read_body(self, maximum=65536):
             try:
                 size = int(self.headers.get("Content-Length", "0"))
             except ValueError:
                 raise APIError("Content-Length 不合法") from None
-            if not 0 <= size <= 65536:
+            if not 0 <= size <= maximum:
                 raise APIError("請求內容過大", 413)
             if size and self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
                 raise APIError("請使用 application/json", 415)
@@ -140,8 +142,14 @@ def create_server(database, host="127.0.0.1", port=8000, secure=False):
             path = urlparse(self.path).path
             try:
                 if not path.startswith("/api/"):
+                    # Keep links opened from VS Code Live Server working.
+                    entry_aliases = {"/HW2", "/HW2/", "/static", "/static/", "/static/index.html",
+                                     "/HW2/static", "/HW2/static/", "/HW2/static/index.html"}
+                    if self.command == "GET" and path in entry_aliases:
+                        return self.response(b"", status=302, mime="text/plain; charset=utf-8", location="/")
                     files = {"/": ("index.html", "text/html"), "/index.html": ("index.html", "text/html"),
-                             "/app.js": ("app.js", "text/javascript"), "/style.css": ("style.css", "text/css")}
+                             "/app.js": ("app.js", "text/javascript"), "/attendance.js": ("attendance.js", "text/javascript"),
+                             "/style.css": ("style.css", "text/css")}
                     if self.command != "GET" or path not in files:
                         raise APIError("找不到頁面", 404)
                     filename, mime = files[path]
@@ -161,7 +169,7 @@ def create_server(database, host="127.0.0.1", port=8000, secure=False):
                         raise APIError("不允許跨來源操作", 403)
                     if "session" in cookie and not authorization.startswith("Bearer ") and self.headers.get("X-Requested-With") != "SchoolPortal":
                         raise APIError("缺少操作驗證標頭", 403)
-                data = self.read_body() if self.command != "GET" else {}
+                data = self.read_body(4_000_000 if path == "/api/attendance/roll-call" else 65536) if self.command != "GET" else {}
                 context = Context(database, None, data, parse_qs(urlparse(self.path).query), token)
                 result = router.dispatch(self.command, path, context)
                 status = 201 if self.command == "POST" and path in ("/api/users", "/api/courses", "/api/enroll", "/api/leave") else 200

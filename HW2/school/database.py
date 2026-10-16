@@ -33,6 +33,26 @@ CREATE TABLE IF NOT EXISTS leave_requests (
 CREATE TABLE IF NOT EXISTS sessions (
  token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), expires_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS attendance (
+ id INTEGER PRIMARY KEY, course_id INTEGER NOT NULL REFERENCES courses(id),
+ student_id INTEGER NOT NULL REFERENCES users(id), attendance_date TEXT NOT NULL,
+ period INTEGER NOT NULL CHECK(period BETWEEN 1 AND 12),
+ status TEXT NOT NULL CHECK(status IN ('present','absent','late','excused')),
+ note TEXT NOT NULL DEFAULT '', recorded_by INTEGER NOT NULL REFERENCES users(id),
+ created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+ UNIQUE(course_id,student_id,attendance_date,period)
+);
+CREATE INDEX IF NOT EXISTS idx_attendance_student_date ON attendance(student_id,attendance_date);
+CREATE TABLE IF NOT EXISTS attendance_classes (
+ id INTEGER PRIMARY KEY, course_id INTEGER NOT NULL REFERENCES courses(id),
+ attendance_date TEXT NOT NULL, period INTEGER NOT NULL CHECK(period BETWEEN 1 AND 12),
+ student_count INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','closed')),
+ note TEXT NOT NULL DEFAULT '', recorded_by INTEGER NOT NULL REFERENCES users(id),
+ UNIQUE(course_id,attendance_date,period)
+);
+INSERT OR IGNORE INTO attendance_classes(course_id,attendance_date,period,student_count,status,recorded_by)
+ SELECT course_id,attendance_date,period,count(*),'closed',min(recorded_by)
+ FROM attendance GROUP BY course_id,attendance_date,period;
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit_logs (
  id INTEGER PRIMARY KEY, user_id INTEGER REFERENCES users(id), action TEXT NOT NULL,

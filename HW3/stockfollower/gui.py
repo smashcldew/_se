@@ -7,6 +7,7 @@ from threading import Thread
 from tkinter import messagebox, ttk
 
 from .indicators import kdj_series, moving_averages
+from .signals import Signal, detect_kdj_signals
 from .providers import DataProviderError, StockProvider, clear_cache
 from .tables import leaderboard_rows
 from .industries import ALL_INDUSTRIES, INDUSTRIES, UNKNOWN_INDUSTRY
@@ -14,6 +15,30 @@ from .industries import ALL_INDUSTRIES, INDUSTRIES, UNKNOWN_INDUSTRY
 
 def _money(value: Decimal | None) -> str:
     return "-" if value is None else f"{value:,.2f}"
+
+
+def _stock_report(item, bars: list) -> str:
+    averages = moving_averages(bars)
+    technical = "\n".join(
+        f"- MA{period}: {_money(value)} ({'insufficient data' if value is None else 'close above MA' if item.close > value else 'close below MA'})"
+        for period, value in averages.items()
+    )
+    pct = "-" if item.change_percent is None else f"{item.change_percent:+.2f}%"
+    return (
+        f"# {item.symbol} {item.name} Stock Report\n\n"
+        f"Market: {item.market}\nClose: {_money(item.close)}\nDaily change %: {pct}\nVolume: {item.volume:,} shares\n\n"
+        f"Technical\n{technical}\n\nNews Sentiment\n- No news data source is connected yet, so no sentiment summary is available.\n\n"
+        "Disclaimer\n- This report summarizes public data and rule-based technical indicators only. It is not investment advice."
+    )
+
+
+def _latest_signal_text(ohlc: list, signals: list[Signal]) -> str:
+    if not signals:
+        return "上一次交叉：此範圍無訊號｜建議：-｜交叉價格：-"
+    signal = max(signals, key=lambda item: item.date)
+    label, action = ("G", "買進") if signal.type == "golden_cross" else ("D", "賣出")
+    close = next(item[4] for item in ohlc if item[0] == signal.date)
+    return f"上一次交叉：{label}（{signal.date:%Y/%m/%d}）｜建議{action}（{label}）｜交叉價格：{close:,.2f}"
 
 
 def _chart_bars(bars: list, interval: str) -> list[tuple[date, float, float, float, float]]:  # type: ignore[type-arg]
@@ -65,6 +90,27 @@ def _chart_day_ticks(dates: list[date]) -> tuple[list[int], list[str]]:
     return positions, labels
 
 
+def _draw_signal_markers(axis, dates: list[date], signals: list[Signal]) -> None:
+    """Render detector output at the same trading positions as the candles."""
+    positions = {trade_date: index for index, trade_date in enumerate(dates)}
+    styles = {
+        "golden_cross": ("G", "#b07800", "--"),
+        "death_cross": ("D", "#1565c0", ":"),
+    }
+    for signal in signals:
+        position = positions.get(signal.date)
+        if position is None or signal.type not in styles:
+            continue
+        label, color, linestyle = styles[signal.type]
+        axis.axvline(position, ymin=0, ymax=0.91, color=color,
+                     linestyle=linestyle, linewidth=0.9, alpha=0.55, zorder=1)
+        # Data coordinates on x follow pan/zoom; axes coordinates on y keep
+        # the small labels in the reserved space above the price bars.
+        axis.text(position, 0.95, label, transform=axis.get_xaxis_transform(),
+                  ha="center", va="center", fontsize=9, fontweight="bold",
+                  color=color, clip_on=True, zorder=4)
+
+
 class StockFollowerWindow:
     def __init__(self) -> None:
         clear_cache()
@@ -75,6 +121,9 @@ class StockFollowerWindow:
         self.root.minsize(1100, 650)
         self.provider = StockProvider()
         self.symbol = tk.StringVar(value="2330")
+        self.latest_close = tk.StringVar(value="上一次收盤價：-")
+        self.latest_signal = tk.StringVar(value="上一次交叉：-｜建議：-｜交叉價格：-")
+        self.symbol.trace_add("write", self._clear_search_summary)
         self.refresh = tk.BooleanVar(value=False)
         self.leaderboard_refresh = tk.BooleanVar(value=False)
         self.ranking = tk.StringVar(value="Volume")
@@ -107,16 +156,16 @@ class StockFollowerWindow:
 
         controls = ttk.Frame(self.stock_container)
         controls.grid(row=0, column=0, sticky="ew")
-        ttk.Label(controls, text="Symbol:").pack(side=tk.LEFT)
+        controls.columnconfigure(4, weight=1)
+        ttk.Label(controls, text="代號：").grid(row=0, column=0)
         entry = ttk.Entry(controls, width=12, textvariable=self.symbol)
-        entry.pack(side=tk.LEFT)
-        entry.bind("<Return>", lambda _event: self.show_quote())
-        ttk.Checkbutton(controls, text="Refresh cache", variable=self.refresh).pack(side=tk.LEFT, padx=(12, 16))
-        stock_actions = ttk.Frame(self.stock_container)
-        stock_actions.grid(row=1, column=0, sticky="ew", pady=(8, 0))
-        ttk.Button(stock_actions, text="Latest close", command=self.show_quote).pack(side=tk.LEFT, padx=3)
-        ttk.Button(stock_actions, text="History", command=self.show_history).pack(side=tk.LEFT, padx=3)
-        ttk.Button(stock_actions, text="Report", command=self.show_report).pack(side=tk.LEFT, padx=3)
+        entry.grid(row=0, column=1)
+        entry.bind("<Return>", lambda _event: self.show_history())
+        ttk.Button(controls, text="搜尋", command=self.show_history).grid(row=0, column=2, padx=(6, 12))
+        ttk.Label(controls, textvariable=self.latest_close).grid(row=0, column=3, sticky="w")
+        signal_label = ttk.Label(controls, textvariable=self.latest_signal, wraplength=360)
+        signal_label.grid(row=0, column=4, sticky="w", padx=(12, 0))
+        signal_label.bind("<Configure>", lambda event: signal_label.configure(wraplength=max(160, controls.winfo_width() - signal_label.winfo_x())))
 
         ranking_controls = ttk.Frame(self.leaderboard_container)
         ranking_controls.grid(row=0, column=0, sticky="ew")
@@ -147,18 +196,31 @@ class StockFollowerWindow:
         ttk.Label(chart_controls, text="  Range:").pack(side=tk.LEFT)
         ttk.Spinbox(chart_controls, from_=1, to=24, width=4, textvariable=self.history_months).pack(side=tk.LEFT)
         ttk.Label(chart_controls, text="months").pack(side=tk.LEFT)
+        ttk.Checkbutton(chart_controls, text="Refresh cache", variable=self.refresh).pack(side=tk.LEFT, padx=12)
 
-        self.content = ttk.PanedWindow(self.stock_container, orient=tk.VERTICAL)
+        self.content = ttk.Frame(self.stock_container)
         self.content.grid(row=3, column=0, sticky="nsew", pady=(14, 8))
-        self.output = tk.Text(self.content, wrap=tk.WORD, font=("Consolas", 11), state=tk.DISABLED, height=12)
+        self.content.columnconfigure(0, weight=1)
+        for row in range(3):
+            self.content.rowconfigure(row, weight=1, uniform="stock_sections")
+        self.report_frame = ttk.LabelFrame(self.content, text="Report")
+        self.report_frame.grid(row=0, column=0, sticky="nsew")
+        self.report_frame.grid_propagate(False)
+        self.report_frame.rowconfigure(0, weight=1)
+        self.report_frame.columnconfigure(0, weight=1)
+        self.output = tk.Text(self.report_frame, wrap=tk.WORD, font=("Consolas", 10), state=tk.DISABLED, height=1)
+        self.output.grid(row=0, column=0, sticky="nsew")
+        report_scroll = ttk.Scrollbar(self.report_frame, orient=tk.VERTICAL, command=self.output.yview)
+        report_scroll.grid(row=0, column=1, sticky="ns")
+        self.output.configure(yscrollcommand=report_scroll.set)
         self.chart_frame = ttk.Frame(self.content)
+        self.chart_frame.grid(row=1, column=0, rowspan=2, sticky="nsew")
+        self.chart_frame.pack_propagate(False)
         ttk.Label(
             self.chart_frame,
             text="Run a history query to display the embedded candlestick chart here.",
             anchor=tk.CENTER,
         ).pack(fill=tk.BOTH, expand=True)
-        self.content.add(self.output, weight=1)
-        self.content.add(self.chart_frame, weight=2)
         output_scroll = ttk.Scrollbar(self.stock_container, orient=tk.HORIZONTAL, command=self.output.xview)
         output_scroll.grid(row=4, column=0, sticky="ew")
         self.output.configure(xscrollcommand=output_scroll.set)
@@ -223,12 +285,11 @@ class StockFollowerWindow:
         self.status.set("Done.")
 
     def _show_text_output(self) -> None:
-        if str(self.output) not in self.content.panes():
-            self.content.insert(0, self.output, weight=1)
+        self.report_frame.grid()
 
-    def _hide_text_output(self) -> None:
-        if str(self.output) in self.content.panes():
-            self.content.forget(self.output)
+    def _clear_search_summary(self, *_args) -> None:
+        self.latest_close.set("上一次收盤價：-")
+        self.latest_signal.set("上一次交叉：-｜建議：-｜交叉價格：-")
 
     def _show_error(self, text: str) -> None:
         self.status.set("Request failed.")
@@ -275,21 +336,20 @@ class StockFollowerWindow:
             return
 
         def work() -> tuple[str, list]:
-            bars = self.provider.history(symbol, months=months, refresh=refresh)
+            bars = sorted(self.provider.history(symbol, months=months, refresh=refresh), key=lambda bar: bar.trade_date)
             if not bars:
                 raise DataProviderError("No historical price data is available.")
-            rows = ["Date        Open    High    Low     Close       Volume"]
-            rows.extend(
-                f"{bar.trade_date:%Y-%m-%d}  {bar.open:>6}  {bar.high:>6}  {bar.low:>6}  {bar.close:>6}  {bar.volume:>12,}"
-                for bar in bars[-20:]
-            )
-            rows.append("")
-            rows.append("  ".join(f"MA{period}: {_money(value)}" for period, value in moving_averages(bars).items()))
-            return "\n".join(rows), bars
+            item = self.provider.get_quote(symbol, refresh)
+            return _stock_report(item, bars), bars
 
         def show_history_result(result: tuple[str, list]) -> None:
-            _, bars = result
-            self._hide_text_output()
+            # Do not show an earlier search's price beside a different symbol.
+            if self.symbol.get().strip() != symbol:
+                return
+            report, bars = result
+            latest_bar = max(bars, key=lambda bar: bar.trade_date)
+            self.latest_close.set(f"上一次收盤價：{_money(latest_bar.close)}")
+            self._show_result(report)
             self._history_chart_data = (bars, symbol)
             self._redraw_history_chart()
             self.status.set("Done.")
@@ -299,11 +359,19 @@ class StockFollowerWindow:
     def _redraw_history_chart(self, _event=None) -> None:
         if self._history_chart_data is not None:
             bars, symbol = self._history_chart_data
-            self._show_history_chart(bars, symbol, self.chart_interval.get())
+            interval = self.chart_interval.get()
+            ohlc = _chart_bars(bars, interval)
+            dates = [item[0] for item in ohlc]
+            series = kdj_series([item[2] for item in ohlc], [item[3] for item in ohlc], [item[4] for item in ohlc])
+            signals = detect_kdj_signals(dates, series[0], series[1])
+            self._history_chart_technical = (ohlc, series, signals)
+            if self.symbol.get().strip() == symbol:
+                self.latest_signal.set(_latest_signal_text(ohlc, signals))
+            self._show_history_chart(bars, symbol, interval)
 
     def _show_history_chart(self, bars: list, symbol: str, interval: str) -> None:  # type: ignore[type-arg]
         try:
-            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
             from matplotlib.figure import Figure
         except ImportError:
             self._show_error("Matplotlib is not installed. Run: python -m pip install -e .")
@@ -314,11 +382,8 @@ class StockFollowerWindow:
         figure = Figure(figsize=(8, 6), dpi=100)
         price_axis = figure.add_subplot(211)
         kdj_axis = figure.add_subplot(212, sharex=price_axis)
-        ohlc = _chart_bars(bars, interval)
+        ohlc, (k_values, d_values, j_values), signals = self._history_chart_technical
         dates = [item[0] for item in ohlc]
-        highs = [item[2] for item in ohlc]
-        lows = [item[3] for item in ohlc]
-        closes = [item[4] for item in ohlc]
         # Use sequential positions so weekends and market holidays do not create empty gaps.
         x_values = list(range(len(ohlc)))
         for x_value, (_, opening, high, low, close) in zip(x_values, ohlc):
@@ -333,7 +398,8 @@ class StockFollowerWindow:
                 edgecolor=color,
                 linewidth=0.7,
             )
-        k_values, d_values, j_values = kdj_series(highs, lows, closes)
+        price_axis.margins(y=0.18)
+        _draw_signal_markers(price_axis, dates, signals)
         for label, values, color in (("K", k_values, "#1565c0"), ("D", d_values, "#f9a825"), ("J", j_values, "#8e24aa")):
             kdj_axis.plot(
                 x_values,
@@ -396,9 +462,24 @@ class StockFollowerWindow:
         year_axis.set_xticklabels([str(dates[position].year) for position in year_positions])
         year_axis.tick_params(axis="x", which="major", length=12, pad=2)
 
+        # Calendar labels must follow the shared price/KDJ range too. These
+        # auxiliary axes should not intercept toolbar zoom and pan gestures.
+        month_axis.set_navigate(False)
+        year_axis.set_navigate(False)
+
+        def sync_calendar_axes(axis):
+            for calendar_axis in (month_axis, year_axis):
+                calendar_axis.set_xlim(axis.get_xlim())
+
+        price_axis.callbacks.connect("xlim_changed", sync_calendar_axes)
+        kdj_axis.callbacks.connect("xlim_changed", sync_calendar_axes)
+
         figure.subplots_adjust(bottom=0.32 if len(day_labels) > 40 else 0.28, hspace=0.08)
         kdj_axis.legend(loc="upper left")
         canvas = FigureCanvasTkAgg(figure, master=self.chart_frame)
+        toolbar = NavigationToolbar2Tk(canvas, self.chart_frame, pack_toolbar=False)
+        toolbar.update()
+        toolbar.pack(side=tk.BOTTOM, fill=tk.X)
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
@@ -412,18 +493,7 @@ class StockFollowerWindow:
 
         def work() -> str:
             item = self.provider.get_quote(symbol, refresh)
-            averages = moving_averages(self.provider.history(symbol, months=6, refresh=refresh))
-            technical = "\n".join(
-                f"- MA{period}: {_money(value)} ({'insufficient data' if value is None else 'close above MA' if item.close > value else 'close below MA'})"
-                for period, value in averages.items()
-            )
-            pct = "-" if item.change_percent is None else f"{item.change_percent:+.2f}%"
-            return (
-                f"# {item.symbol} {item.name} Stock Report\n\n"
-                f"Market: {item.market}\nClose: {_money(item.close)}\nDaily change %: {pct}\nVolume: {item.volume:,} shares\n\n"
-                f"Technical\n{technical}\n\nNews Sentiment\n- No news data source is connected yet, so no sentiment summary is available.\n\n"
-                "Disclaimer\n- This report summarizes public data and rule-based technical indicators only. It is not investment advice."
-            )
+            return _stock_report(item, self.provider.history(symbol, months=6, refresh=refresh))
 
         self._run(work)
 

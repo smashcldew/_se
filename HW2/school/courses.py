@@ -60,6 +60,10 @@ def delete_course(database, user, course_id):
             raise APIError("課程不存在", 404)
         if conn.execute("SELECT 1 FROM enrollments WHERE course_id=?", (course_id,)).fetchone():
             raise APIError("已有學生選課，無法刪除課程", 409)
+        if conn.execute("SELECT 1 FROM attendance WHERE course_id=?", (course_id,)).fetchone():
+            raise APIError("已有出缺席紀錄，無法刪除課程", 409)
+        if conn.execute("SELECT 1 FROM attendance_classes WHERE course_id=?", (course_id,)).fetchone():
+            raise APIError("已有課堂點名，無法刪除課程", 409)
         conn.execute("DELETE FROM courses WHERE id=?", (course_id,))
         audit(conn, user["id"], "delete_course", course_id)
     return {"message": "課程已刪除"}

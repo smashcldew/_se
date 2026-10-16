@@ -10,9 +10,10 @@ ROADMAP = [
     {"key": "fees", "name": "學費管理", "status": "planned"},
     {"key": "notifications", "name": "公告通知", "status": "planned"},
     {"key": "classrooms", "name": "教室管理", "status": "planned"},
-    {"key": "attendance", "name": "點名管理", "status": "planned"},
 ]
 
 
 def register(router):
+    from . import attendance
+    attendance.register(router)
     router.add("GET", "/api/modules", lambda context: ROADMAP)

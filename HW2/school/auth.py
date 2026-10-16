@@ -105,6 +105,8 @@ def save_user(database, user, data, user_id=None):
                 raise APIError("使用者不存在", 404)
             if user_id == user["id"] and (role != "admin" or not active):
                 raise APIError("不可停用自己的管理員權限", 409)
+            if old["role"] != role and conn.execute("SELECT 1 FROM attendance WHERE student_id=? OR recorded_by=?", (user_id, user_id)).fetchone():
+                raise APIError("使用者已有出缺席紀錄，無法變更角色", 409)
             if old["role"] != role and conn.execute("SELECT 1 FROM courses WHERE teacher_id=? UNION SELECT 1 FROM enrollments WHERE student_id=? UNION SELECT 1 FROM leave_requests WHERE student_id=?", (user_id, user_id, user_id)).fetchone():
                 raise APIError("使用者已有校務紀錄，無法變更角色", 409)
             if conn.execute("SELECT 1 FROM users WHERE username=? AND id<>?", (username, user_id)).fetchone():

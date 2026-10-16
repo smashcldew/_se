@@ -26,11 +26,22 @@ class SystemTests(ServerCase):
         self.assertEqual(status, 201)
         leave_id = result["id"]
         office = self.login("office", "office123")
-        for reviewer in (office, self.login("teacher1", "teacher123"), self.login("admin", "admin123")):
-            status, requests = self.request("/api/leave", token=reviewer)
+        teacher = self.login("teacher1", "teacher123")
+        admin = self.login("admin", "admin123")
+        for reader in (office, teacher, admin):
+            status, requests = self.request("/api/leave", token=reader)
             self.assertEqual(status, 200)
             self.assertTrue(any(row["id"] == leave_id and row["status"] == "pending" for row in requests))
-        self.assertEqual(self.request(f"/api/leave/{leave_id}/review", "POST", {"status": "approved"}, office)[0], 200)
+        for token_without_permission in (office, admin):
+            for decision in ("approved", "rejected"):
+                self.assertEqual(self.request(f"/api/leave/{leave_id}/review", "POST", {"status": decision}, token_without_permission)[0], 403)
+        record = self.request("/api/leave", token=office)[1][0]
+        self.assertEqual(record["status"], "pending")
+        self.assertIsNone(record["reviewed_by"])
+        self.assertEqual(self.request(f"/api/leave/{leave_id}/review", "POST", {"status": "approved"}, teacher)[0], 200)
+        record = self.request("/api/leave", token=office)[1][0]
+        self.assertEqual(record["status"], "approved")
+        self.assertEqual(record["reviewed_by"], self.users["teacher1"]["id"])
         self.stop_server()
         self.db.initialize()
         self.start_server()
@@ -41,6 +52,13 @@ class SystemTests(ServerCase):
     def test_permissions_invalid_data_and_expired_session(self):
         student = self.login()
         teacher = self.login("teacher1", "teacher123")
+        office = self.login("office", "office123")
+        self.assertEqual(self.request("/api/schedule", token=office)[0], 403)
+        self.assertEqual(self.request("/api/schedule?student_id=3", token=office)[0], 403)
+        self.assertEqual(self.request("/api/courses", token=office)[0], 200)
+        self.assertEqual(self.request("/api/leave", token=office)[0], 200)
+        self.assertEqual(self.request("/api/schedule", token=teacher)[0], 200)
+        self.assertEqual(self.request("/api/schedule", token=self.login("admin", "admin123"))[0], 200)
         self.assertEqual(self.request("/api/users", token=student)[0], 403)
         self.assertEqual(self.request("/api/enroll", "POST", {"course_id": 1}, teacher)[0], 403)
         self.assertEqual(self.request("/api/leave/1/review", "POST", {"status": "approved"}, student)[0], 403)
@@ -70,6 +88,15 @@ class SystemTests(ServerCase):
         self.assertEqual(self.request("/api/logout", "POST", {}, token, {"Origin": "https://other.example"})[0], 403)
         self.assertEqual(self.request("/")[0], 200)
         self.assertEqual(self.request("/app.js")[0], 200)
+        for path in ("/HW2", "/HW2/", "/static", "/static/", "/static/index.html",
+                     "/HW2/static", "/HW2/static/", "/HW2/static/index.html"):
+            with self.subTest(path=path):
+                status, content = self.request(path)
+                self.assertEqual(status, 200)
+                self.assertIn(b'id="login-form"', content)
+        self.assertEqual(self.request("/HW2/static/app.py")[0], 404)
+        self.assertEqual(self.request("/missing.html")[0], 404)
+        self.assertEqual(self.request("/api/missing")[0], 404)
         self.assertEqual(self.request("/../app.py")[0], 404)
 
     def test_course_management_and_capacity_over_http(self):
@@ -95,7 +122,7 @@ class SystemTests(ServerCase):
         self.assertEqual(self.request("/api/leave?student_id=4", token=student)[1], [])
         data = {"start_date": "2026-02-30", "end_date": "2026-03-01", "reason": "病假"}
         self.assertEqual(self.request("/api/leave", "POST", data, student)[0], 400)
-        office = self.login("office", "office123")
-        self.assertEqual(self.request("/api/leave/1/review", "POST", {"status": "unknown"}, office)[0], 400)
-        self.assertEqual(self.request("/api/leave/1/review", "POST", {"status": "rejected"}, office)[0], 200)
-        self.assertEqual(self.request("/api/leave/1/review", "POST", {"status": "approved"}, office)[0], 409)
+        teacher = self.login("teacher1", "teacher123")
+        self.assertEqual(self.request("/api/leave/1/review", "POST", {"status": "unknown"}, teacher)[0], 400)
+        self.assertEqual(self.request("/api/leave/1/review", "POST", {"status": "rejected"}, teacher)[0], 200)
+        self.assertEqual(self.request("/api/leave/1/review", "POST", {"status": "approved"}, teacher)[0], 409)

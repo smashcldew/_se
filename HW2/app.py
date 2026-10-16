@@ -1,4 +1,4 @@
-"""Entry point: python app.py [--port 8000] [--cert CERT --key KEY]."""
+"""Entry point: python app.py [--port 5500] [--cert CERT --key KEY]."""
 import argparse
 import logging
 from logging.handlers import RotatingFileHandler
@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent
 def main():
     parser = argparse.ArgumentParser(description="校務系統")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=5500)
     parser.add_argument("--db", type=Path, default=ROOT / "data" / "school.db")
     parser.add_argument("--cert", type=Path)
     parser.add_argument("--key", type=Path)

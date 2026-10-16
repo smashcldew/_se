@@ -38,6 +38,7 @@ def withdraw(database, user, course_id):
 
 
 def schedule(database, user):
+    require_role(user, "student", "teacher", "admin")
     with database.connection() as conn:
         sql = "SELECT c.*,u.full_name AS teacher_name FROM courses c JOIN users u ON u.id=c.teacher_id"
         if user["role"] == "student":

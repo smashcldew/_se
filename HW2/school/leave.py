@@ -25,7 +25,7 @@ def list_requests(database, user):
 
 
 def review(database, user, data, leave_id):
-    require_role(user, "admin", "administrative", "teacher")
+    require_role(user, "teacher")
     status = text(data, "status", 16)
     if status not in ("approved", "rejected"):
         raise APIError("審核狀態只能為 approved 或 rejected")

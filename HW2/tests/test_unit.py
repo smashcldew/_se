@@ -92,12 +92,20 @@ class UnitTests(DatabaseCase):
         ]:
             self.assert_error(400, leave.submit, self.db, student, data)
         result = leave.submit(self.db, student, {"start_date": "2026-10-05", "end_date": "2026-10-05", "reason": "病假"})
-        self.assert_error(400, leave.review, self.db, self.users["office"], {"status": "unknown"}, result["id"])
-        leave.review(self.db, self.users["office"], {"status": "approved"}, result["id"])
+        for role in ("student1", "office", "admin"):
+            for status in ("approved", "rejected"):
+                self.assert_error(403, leave.review, self.db, self.users[role], {"status": status}, result["id"])
+        self.assertEqual(leave.list_requests(self.db, student)[0]["status"], "pending")
+        self.assert_error(400, leave.review, self.db, self.users["teacher1"], {"status": "unknown"}, result["id"])
+        leave.review(self.db, self.users["teacher1"], {"status": "approved"}, result["id"])
         self.assert_error(409, leave.review, self.db, self.users["teacher1"], {"status": "rejected"}, result["id"])
         self.assertEqual(leave.list_requests(self.db, student)[0]["status"], "approved")
+        record = leave.list_requests(self.db, self.users["office"])[0]
+        self.assertEqual(record["reviewed_by"], self.users["teacher1"]["id"])
+        self.assertTrue(record["reviewed_at"])
 
     def test_isolation_and_backup(self):
+        self.assert_error(403, enrollment.schedule, self.db, self.users["office"])
         self.assertEqual(enrollment.schedule(self.db, self.users["student1"]), [])
         self.assertEqual(leave.list_requests(self.db, self.users["student1"]), [])
         backup = self.db.backup()

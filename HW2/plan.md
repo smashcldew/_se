@@ -150,7 +150,7 @@ SQLite（school.db）
 
 ## 九、本次開發狀態
 
-已執行本文件第八節規畫的單元、系統與瀏覽器 E2E 測試。目前共 37 項測試，本輪皆已通過。測試程式修正、覆蓋對照與驗證限制請見 [test-report.md](test-report.md)。下列功能仍以「已實作」標示，實際驗證範圍以測試報告為準。
+已執行本文件第八節規畫的單元、系統與瀏覽器 E2E 測試。目前共 37 項測試，本輪皆已通過。測試程式修正、覆蓋對照與驗證限制請見 [test-report.md](../Week7/test-report.md)。下列功能仍以「已實作」標示，實際驗證範圍以測試報告為準。
 
 | 項目 | 狀態 | 實作位置 |
 | --- | --- | --- |
@@ -164,9 +164,9 @@ SQLite（school.db）
 | HTTPS 啟動選項與錯誤日誌 | 已實作；HTTPS 需提供憑證與私鑰 | `app.py` |
 | 四種角色網頁介面 | 已實作 | `static/` |
 | 出缺席／點名模組 | 已實作，四種角色入口，老師登錄與更正、學生查自己、行政及管理員查全校 | `school/attendance.py`、`static/attendance.js` |
-| 單元測試 | 17 項本輪全部通過 | `tests/test_unit.py`、`tests/test_attendance.py` |
-| 系統測試 | 已執行，11 項通過 | `tests/test_system.py`、`tests/test_attendance.py` |
-| 瀏覽器 E2E 測試 | 已執行，9 項通過 | `tests/test_e2e.py` |
+| 單元測試 | 17 項本輪全部通過 | `../Week7/tests/test_unit.py`、`../Week7/tests/test_attendance.py` |
+| 系統測試 | 已執行，11 項通過 | `../Week7/tests/test_system.py`、`../Week7/tests/test_attendance.py` |
+| 瀏覽器 E2E 測試 | 已執行，9 項通過 | `../Week7/tests/test_e2e.py` |
 | 成績、學費、公告通知與教室管理 | 預留模組擴充入口，完整業務功能列為後續工作 | `school/extensions.py` |
 
 ### 2026-10-10 網頁畫面設計
@@ -182,6 +182,6 @@ SQLite（school.db）
 - 點名模組：獨立前後端檔案，依課程、學生、日期與節次保存；提供出席、缺席、遲到、請假與備註，支援彈出視窗登錄、更正、篩選與統計。請假須有核准申請；既有資料庫自動新增表。詳見 [attendance-module.md](attendance-module.md)。
 - 課堂點名：老師在授課課程按「開啟點名」，選日期與節次後點全班名單；支援整堂儲存、既有結果帶入、名單異動檢查與整批交易回復。
 - 出缺席主列表：一堂課一列，日期節次、課程、學生人數、點名中／關閉、老師手填備註／缺席人數、修改；老師以彈出視窗調整課堂及個人明細。
-- 最新驗證：單元 17 項、系統 11 項、E2E 9 項共 37 項本輪皆已通過；詳見 [test-report.md](test-report.md)。
+- 最新驗證：單元 17 項、系統 11 項、E2E 9 項共 37 項本輪皆已通過；詳見 [test-report.md](../Week7/test-report.md)。
 
 本次在 `.runtime/python/` 準備 Python 3.13.7 並安裝測試依賴，以臨時 SQLite 資料庫與臨時 HTTP 伺服器執行驗證，使用已安裝的 Edge 進行無頭瀏覽器測試。未建立或修改正式 `data/school.db`。`.runtime/` 已列於 Git 忽略規則。

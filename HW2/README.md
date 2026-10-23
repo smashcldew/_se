@@ -2,7 +2,7 @@
 
 以 Python、SQLite 與原生 HTML / CSS / JavaScript 建立的校務系統，支援管理員、行政、學生與老師。開發規畫與進度請見 [plan.md](plan.md)。
 
-**目前 37 項測試皆已通過。** 本輪完整執行 36 項，再新增課堂 API 測試並重驗 2 項相關瀏覽器流程，全部通過。執行環境、修正與驗證限制請見 [test-report.md](test-report.md)。啟動環境需 Python 3.11 以上。
+**目前 37 項測試皆已通過。** 本輪完整執行 36 項，再新增課堂 API 測試並重驗 2 項相關瀏覽器流程，全部通過。執行環境、修正與驗證限制請見 [test-report.md](../Week7/test-report.md)。啟動環境需 Python 3.11 以上。
 
 ## 網頁畫面
 
@@ -176,10 +176,10 @@ def list_grades(context):
 
 | 類別 | 檔案 | 範圍 |
 | --- | --- | --- |
-| 單元測試 | `tests/test_unit.py` | 雜湊、session 到期與撤銷、角色、搜尋、重複與額滿、併發選課、衝堂、請假驗證、備份 |
-| 系統測試 | `tests/test_system.py` | 真實 HTTP API、角色登入、資料隔離、重啟、管理、Cookie 操作驗證與靜態檔案 |
-| 點名單元與系統測試 | `tests/test_attendance.py` | 課程／角色權限、篩選、重複更新、請假驗證、歷史保存、既有資料庫升級 |
-| E2E 測試 | `tests/test_e2e.py` | 真實瀏覽器操作選課、課表、學生請假、教師核准與駁回、行政查閱紀錄、管理員新增帳號與設定、權限拒絕 |
+| 單元測試 | `../Week7/tests/test_unit.py` | 雜湊、session 到期與撤銷、角色、搜尋、重複與額滿、併發選課、衝堂、請假驗證、備份 |
+| 系統測試 | `../Week7/tests/test_system.py` | 真實 HTTP API、角色登入、資料隔離、重啟、管理、Cookie 操作驗證與靜態檔案 |
+| 點名單元與系統測試 | `../Week7/tests/test_attendance.py` | 課程／角色權限、篩選、重複更新、請假驗證、歷史保存、既有資料庫升級 |
+| E2E 測試 | `../Week7/tests/test_e2e.py` | 真實瀏覽器操作選課、課表、學生請假、教師核准與駁回、行政查閱紀錄、管理員新增帳號與設定、權限拒絕 |
 
 測試使用臨時資料庫與臨時伺服器，不使用 `data/school.db`。後續需要驗證時可執行：
 
@@ -193,4 +193,4 @@ def list_grades(context):
 .\.venv\Scripts\python.exe -m unittest tests.test_e2e -v
 ```
 
-瀏覽器安裝方式參考 [Playwright 官方文件](https://playwright.dev/python/docs/library)。本次使用專案內 `.runtime/python/python.exe` 與已安裝的 Edge 驗證；重現命令請見 [test-report.md](test-report.md)。
+瀏覽器安裝方式參考 [Playwright 官方文件](https://playwright.dev/python/docs/library)。本次使用專案內 `.runtime/python/python.exe` 與已安裝的 Edge 驗證；重現命令請見 [test-report.md](../Week7/test-report.md)。

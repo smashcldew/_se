@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from stockfollower import gui, providers
+from stockfollower.storage import PriceStore
 
 
 class RegressionTests(unittest.TestCase):
@@ -29,16 +30,18 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(window.status.mock_calls, [])
 
     def test_leaderboard_error_does_not_change_stock_status(self):
-        callbacks = []
+        import queue
         window = object.__new__(gui.StockFollowerWindow)
         window.status = Mock()
-        window.root = SimpleNamespace(after=lambda delay, callback: callbacks.append(callback))
+        window.root = SimpleNamespace()
+        window._results = queue.Queue()
         board_status = Mock()
         def thread(*, target, daemon):
             return SimpleNamespace(start=target)
         with patch.object(gui, 'Thread', side_effect=thread), patch.object(gui.messagebox, 'showerror') as error:
             window._run(Mock(side_effect=providers.DataProviderError('failed')), status=board_status)
-            callbacks[0]()
+            callback, payload = window._results.get_nowait()
+            callback(payload)
             error.assert_called_once()
         self.assertEqual(window.status.mock_calls, [])
         self.assertEqual(board_status.set.call_args.args, ('Request failed.',))
@@ -85,18 +88,19 @@ class RegressionTests(unittest.TestCase):
                     self.assertEqual(bar.volume, 1000)
 
     def test_deferred_error_callbacks(self):
+        import queue
         for error in [providers.DataProviderError('download failed'), RuntimeError('unexpected')]:
             with self.subTest(error=error):
-                callbacks = []
                 window = object.__new__(gui.StockFollowerWindow)
                 window.status = Mock()
-                window.root = SimpleNamespace(after=lambda delay, callback: callbacks.append(callback))
+                window._results = queue.Queue()
                 window._show_error = Mock()
                 def thread(*, target, daemon):
                     return SimpleNamespace(start=target)
                 with patch.object(gui, 'Thread', side_effect=thread):
                     window._run(Mock(side_effect=error))
-                callbacks[0]()
+                callback, payload = window._results.get_nowait()
+                callback(payload)
                 self.assertIn(str(error), window._show_error.call_args.args[0])
 
     def test_invalid_months_do_not_start_query(self):
@@ -136,6 +140,7 @@ class RegressionTests(unittest.TestCase):
         window.history_months = Mock()
         window.history_months.get.return_value = '3'
         window.provider = Mock()
+        window.store = None
         bars = [SimpleNamespace(trade_date=date(2026, 10, day),
                                 open=Decimal('1000'), high=Decimal('1250'),
                                 low=Decimal('990'), close=Decimal(close), volume=1000)
@@ -167,6 +172,87 @@ class RegressionTests(unittest.TestCase):
         on_success(result)
         window.latest_close.set.assert_not_called()
         window._redraw_history_chart.assert_not_called()
+
+    def test_history_query_persists_quote_and_bars_to_store(self):
+        with tempfile.TemporaryDirectory() as directory:
+            window = object.__new__(gui.StockFollowerWindow)
+            window.store = PriceStore(Path(directory) / 'prices.db')
+            window.symbol = Mock()
+            window.symbol.get.return_value = '2330'
+            window.refresh = Mock(get=lambda: False)
+            window.history_months = Mock(get=lambda: '3')
+            window.provider = Mock()
+            from stockfollower.models import DailyBar
+            bars = [DailyBar(date(2026, 10, day), Decimal('100'), Decimal('110'),
+                             Decimal('90'), Decimal(close), 1000, Decimal('1'))
+                    for day, close in [(1, '1000'), (2, '1234.5')]]
+            window.provider.history.return_value = bars
+            window.provider.get_quote.return_value = SimpleNamespace(
+                symbol='2330', name='TSMC', market='TWSE', close=Decimal('1234.5'),
+                change=Decimal('5'), change_percent=Decimal('1.2'), volume=1000,
+                industry='半導體業')
+            window._show_result = Mock()
+            window._redraw_history_chart = Mock()
+            window.latest_close = Mock()
+            window.status = Mock()
+            window._run = Mock()
+            window.show_history()
+            work, _on_success = window._run.call_args.args
+            work()
+            # The quote is stored under the latest bar's trade date, with bars.
+            stored = window.store.saved_quotes(date(2026, 10, 2))
+            self.assertEqual(len(stored), 1)
+            self.assertEqual(stored[0].close, Decimal('1234.5'))
+            self.assertEqual([b.trade_date for b in window.store.recent_prices('2330')],
+                             [date(2026, 10, 2), date(2026, 10, 1)])
+
+    def test_same_day_repeat_query_reads_db_instead_of_api(self):
+        from stockfollower.models import DailyBar
+        with tempfile.TemporaryDirectory() as directory:
+            window = object.__new__(gui.StockFollowerWindow)
+            window.store = PriceStore(Path(directory) / 'prices.db')
+            window.symbol = Mock()
+            window.symbol.get.return_value = '2330'
+            window.refresh = Mock(get=lambda: False)
+            window.history_months = Mock(get=lambda: '3')
+            window.provider = Mock()
+            window._show_result = Mock()
+            window._redraw_history_chart = Mock()
+            window.latest_close = Mock()
+            window.status = Mock()
+            window._run = Mock()
+            today = date.today()
+            bars = [DailyBar(today, Decimal('100'), Decimal('110'), Decimal('90'),
+                             Decimal('105'), 1000, Decimal('1'))]
+            window.provider.history.return_value = bars
+            window.provider.get_quote.return_value = SimpleNamespace(
+                symbol='2330', name='TSMC', market='TWSE', close=Decimal('105'),
+                change=Decimal('1'), change_percent=Decimal('1.0'), volume=1000,
+                industry='半導體業')
+
+            # First query of the day: hits the API and populates the DB.
+            window.show_history()
+            first_work, _ = window._run.call_args.args
+            _report, _bars, first_source = first_work()
+            self.assertEqual(first_source, '現場下載')
+            self.assertEqual(window.provider.history.call_count, 1)
+
+            # Second query, same day: reads the DB, no further API calls.
+            window.show_history()
+            second_work, _ = window._run.call_args.args
+            _report2, bars2, second_source = second_work()
+            self.assertIn('資料庫', second_source)
+            self.assertEqual(window.provider.history.call_count, 1)
+            self.assertEqual(window.provider.get_quote.call_count, 1)
+            self.assertEqual(bars2[0].close, Decimal('105'))
+
+            # Refresh cache forces the API even on the same day.
+            window.refresh = Mock(get=lambda: True)
+            window.show_history()
+            third_work, _ = window._run.call_args.args
+            _report3, _bars3, third_source = third_work()
+            self.assertEqual(third_source, '現場下載')
+            self.assertEqual(window.provider.history.call_count, 2)
 
     def test_latest_cross_summary_uses_detector_date_and_matching_close(self):
         ohlc = [(date(2026, 10, day), 100, 110, 90, close)

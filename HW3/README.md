@@ -13,6 +13,15 @@ python -m stockfollower
 
 啟動 GUI 時，會先清除 `data/cache/` 中本程式的 `twse_*.json` 與 `tpex_*.json` 快取，再於查詢時向官方公開 API 下載資料。同一次使用期間會重用快取；可勾選 `Refresh cache` 強制更新。TPEx 歷史行情的成交量由官方的「張」換算成「股」，精度依來源資料而定。
 
+## 資料庫
+
+查詢時下載的股價會自動寫入 SQLite 資料庫 `data/stockfollower.db`，持續累積、不會被啟動時的快取清除動作刪除。共兩張表：
+
+- `quotes`：每日報價摘要，欄位為 `symbol`、`name`、`market`、`trade_date`、`close`、`change`、`change_percent`、`volume`、`industry`，以 `(symbol, trade_date)` 為主鍵。
+- `daily_bars`：完整日線 OHLC，欄位為 `symbol`、`trade_date`、`open`、`high`、`low`、`close`、`volume`、`change`，以 `(symbol, trade_date)` 為主鍵。
+
+只有個股查詢（搜尋）會寫入資料庫：以該股最後一個交易日為日期存入當日報價與整段日線。排行榜查詢不會寫入資料庫。重複查詢相同代號與日期會覆寫（upsert）。價格以字串保存以保留 `Decimal` 精度。`stockfollower/storage.py` 的 `PriceStore` 另提供 `recent_prices()` 與 `saved_quotes()` 讀取介面。
+
 ## 介面
 
 視窗左側為個股區，於代號欄輸入四位數股票代號後按「搜尋」，即顯示個股報告、最新收盤價、KDJ 交叉提示，以及內嵌 K 線與 KDJ 圖。圖表可切換日／週／月／年取樣，並以 1–24 個月調整查詢區間（預設 3 個月）。

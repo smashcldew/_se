@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import queue
 import tkinter as tk
 from datetime import date, timedelta
 from decimal import Decimal
@@ -9,6 +10,7 @@ from tkinter import messagebox, ttk
 from .indicators import kdj_series, moving_averages
 from .signals import Signal, detect_kdj_signals
 from .providers import DataProviderError, StockProvider, clear_cache
+from .storage import PriceStore, StorageError
 from .tables import leaderboard_rows
 from .industries import ALL_INDUSTRIES, INDUSTRIES, UNKNOWN_INDUSTRY
 
@@ -61,6 +63,14 @@ def _chart_bars(bars: list, interval: str) -> list[tuple[date, float, float, flo
     ]
 
 
+def _months_cutoff(today: date, months: int) -> date:
+    """First day of the earliest month an `months`-long history query covers."""
+    offset = months - 1
+    year = today.year + ((today.month - 1 - offset) // 12)
+    month = (today.month - 1 - offset) % 12 + 1
+    return date(year, month, 1)
+
+
 def _chart_starts(dates: list[date], key) -> list[int]:
     """Positions where `key(date)` changes, e.g. the first bar of each month."""
     return [index for index in range(len(dates))
@@ -92,11 +102,18 @@ class StockFollowerWindow:
     def __init__(self) -> None:
         clear_cache()
         self._history_chart_data = None
+        # Background work hands results back through this queue; only the main
+        # thread (the poller) touches Tk, which keeps the UI responsive.
+        self._results: queue.Queue = queue.Queue()
         self.root = tk.Tk()
         self.root.title("StockFollower - Taiwan Stock Desktop")
         self.root.geometry("1400x800")
         self.root.minsize(1100, 650)
         self.provider = StockProvider()
+        try:
+            self.store: PriceStore | None = PriceStore()
+        except StorageError:
+            self.store = None  # persistence is optional; the UI still works
         self.symbol = tk.StringVar(value="2330")
         self.latest_close = tk.StringVar(value="上一次收盤價：-")
         self.latest_signal = tk.StringVar(value="上一次交叉：-｜建議：-｜交叉價格：-")
@@ -111,6 +128,7 @@ class StockFollowerWindow:
         self.leaderboard_status = tk.StringVar(value="Choose a ranking to get started.")
         self.leaderboard_title = tk.StringVar(value="TWSE Top 20")
         self._build()
+        self.root.after(50, self._poll_results)
 
     def _build(self) -> None:
         frame = ttk.Frame(self.root, padding=16)
@@ -229,22 +247,30 @@ class StockFollowerWindow:
             raise ValueError("Stock symbol must be a 4-digit number, e.g. 2330.")
         return symbol
 
+    def _poll_results(self) -> None:
+        # Runs on the main thread: deliver any finished work to the widgets.
+        try:
+            while True:
+                callback, payload = self._results.get_nowait()
+                callback(payload)
+        except queue.Empty:
+            pass
+        self.root.after(50, self._poll_results)
+
     def _run(self, work, on_success=None, *, status=None) -> None:
         target_status = self.status if status is None else status
         target_status.set("Loading...")
 
         def runner() -> None:
+            # Tk is touched only by the main-thread poller, never from here.
             try:
                 result = work()
             except (DataProviderError, ValueError) as exc:
-                message = str(exc)
-                self.root.after(0, lambda: self._show_error(message, status))
+                self._results.put((lambda message: self._show_error(message, status), str(exc)))
             except Exception as exc:  # pragma: no cover - unexpected UI failure
-                message = f"Unexpected error: {exc}"
-                self.root.after(0, lambda: self._show_error(message, status))
+                self._results.put((lambda message: self._show_error(message, status), f"Unexpected error: {exc}"))
             else:
-                callback = on_success or self._show_result
-                self.root.after(0, lambda: callback(result))
+                self._results.put((on_success or self._show_result, result))
 
         Thread(target=runner, daemon=True).start()
 
@@ -264,6 +290,18 @@ class StockFollowerWindow:
         (self.status if status is None else status).set("Request failed.")
         messagebox.showerror("StockFollower", text, parent=self.root)
 
+    def _store_history(self, item, bars: list) -> None:
+        # Saving fetched prices is best-effort and must not block a query.
+        if self.store is None:
+            return
+        try:
+            trade_date = max(bars, key=lambda bar: bar.trade_date).trade_date
+            self.store.save_quote(item, trade_date)
+            self.store.save_bars(item.symbol, bars)
+            self.store.record_fetch(item.symbol, date.today())
+        except StorageError:
+            pass
+
     def show_history(self) -> None:
         try:
             symbol = self._symbol()
@@ -280,24 +318,33 @@ class StockFollowerWindow:
             self._show_error("History range must be between 1 and 24 months.")
             return
 
-        def work() -> tuple[str, list]:
+        def work() -> tuple[str, list, str]:
+            today = date.today()
+            # Same-day repeat query for this symbol reuses the database; the
+            # first query of a new day (or Refresh cache) re-downloads from the API.
+            if not refresh and self.store is not None and self.store.last_fetch(symbol) == today.isoformat():
+                bars = self.store.prices_since(symbol, _months_cutoff(today, months))
+                item = self.store.latest_quote(symbol)
+                if bars and item is not None:
+                    return _stock_report(item, bars), bars, f"資料庫（{today:%Y/%m/%d} 已更新）"
             bars = sorted(self.provider.history(symbol, months=months, refresh=refresh), key=lambda bar: bar.trade_date)
             if not bars:
                 raise DataProviderError("No historical price data is available.")
             item = self.provider.get_quote(symbol, refresh)
-            return _stock_report(item, bars), bars
+            self._store_history(item, bars)
+            return _stock_report(item, bars), bars, "現場下載"
 
-        def show_history_result(result: tuple[str, list]) -> None:
+        def show_history_result(result: tuple[str, list, str]) -> None:
             # Do not show an earlier search's price beside a different symbol.
             if self.symbol.get().strip() != symbol:
                 return
-            report, bars = result
+            report, bars, source = result
             latest_bar = max(bars, key=lambda bar: bar.trade_date)
             self.latest_close.set(f"上一次收盤價：{_money(latest_bar.close)}")
             self._show_result(report)
             self._history_chart_data = (bars, symbol)
             self._redraw_history_chart()
-            self.status.set("Done.")
+            self.status.set(f"來源：{source}")
 
         self._run(work, show_history_result)
 

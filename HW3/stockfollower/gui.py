@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import queue
 import tkinter as tk
 from datetime import date, timedelta
 from decimal import Decimal
@@ -9,6 +10,8 @@ from tkinter import messagebox, ttk
 from .indicators import kdj_series, moving_averages
 from .signals import Signal, detect_kdj_signals
 from .providers import DataProviderError, StockProvider, clear_cache
+from .dashboard import industry_changes, market_breadth
+from .storage import PriceStore, StorageError
 from .tables import leaderboard_rows
 from .industries import ALL_INDUSTRIES, INDUSTRIES, UNKNOWN_INDUSTRY
 
@@ -61,6 +64,27 @@ def _chart_bars(bars: list, interval: str) -> list[tuple[date, float, float, flo
     ]
 
 
+def _months_cutoff(today: date, months: int) -> date:
+    """First day of the earliest month an `months`-long history query covers."""
+    offset = months - 1
+    year = today.year + ((today.month - 1 - offset) // 12)
+    month = (today.month - 1 - offset) % 12 + 1
+    return date(year, month, 1)
+
+
+def _cjk_font():  # type: ignore[no-untyped-def]
+    """A FontProperties able to render Chinese, or None to use the default."""
+    from matplotlib.font_manager import FontProperties, findfont
+    for family in ("Microsoft JhengHei", "Microsoft YaHei", "PingFang TC",
+                   "Noto Sans CJK TC", "Noto Sans CJK SC", "SimHei"):
+        try:
+            if findfont(FontProperties(family=family), fallback_to_default=False):
+                return FontProperties(family=family)
+        except Exception:
+            continue
+    return None
+
+
 def _chart_starts(dates: list[date], key) -> list[int]:
     """Positions where `key(date)` changes, e.g. the first bar of each month."""
     return [index for index in range(len(dates))
@@ -92,11 +116,18 @@ class StockFollowerWindow:
     def __init__(self) -> None:
         clear_cache()
         self._history_chart_data = None
+        # Background work hands results back through this queue; only the main
+        # thread (the poller) touches Tk, which keeps the UI responsive.
+        self._results: queue.Queue = queue.Queue()
         self.root = tk.Tk()
         self.root.title("StockFollower - Taiwan Stock Desktop")
         self.root.geometry("1400x800")
         self.root.minsize(1100, 650)
         self.provider = StockProvider()
+        try:
+            self.store: PriceStore | None = PriceStore()
+        except StorageError:
+            self.store = None  # persistence is optional; the UI still works
         self.symbol = tk.StringVar(value="2330")
         self.latest_close = tk.StringVar(value="上一次收盤價：-")
         self.latest_signal = tk.StringVar(value="上一次交叉：-｜建議：-｜交叉價格：-")
@@ -111,6 +142,7 @@ class StockFollowerWindow:
         self.leaderboard_status = tk.StringVar(value="Choose a ranking to get started.")
         self.leaderboard_title = tk.StringVar(value="TWSE Top 20")
         self._build()
+        self.root.after(50, self._poll_results)
 
     def _build(self) -> None:
         frame = ttk.Frame(self.root, padding=16)
@@ -153,6 +185,7 @@ class StockFollowerWindow:
         leaderboard_controls = ttk.Frame(self.leaderboard_container)
         leaderboard_controls.grid(row=1, column=0, sticky="ew", pady=(8, 0))
         ttk.Button(leaderboard_controls, text="Show leaderboard", command=self.show_leaderboard).pack(anchor=tk.W)
+        ttk.Button(leaderboard_controls, text="市場儀表板", command=self.show_dashboard).pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(leaderboard_controls, text="行業篩選：").pack(anchor=tk.W, pady=(4, 0))
         self.industry_filter = ttk.Combobox(
             leaderboard_controls, textvariable=self.industry,
@@ -229,22 +262,30 @@ class StockFollowerWindow:
             raise ValueError("Stock symbol must be a 4-digit number, e.g. 2330.")
         return symbol
 
+    def _poll_results(self) -> None:
+        # Runs on the main thread: deliver any finished work to the widgets.
+        try:
+            while True:
+                callback, payload = self._results.get_nowait()
+                callback(payload)
+        except queue.Empty:
+            pass
+        self.root.after(50, self._poll_results)
+
     def _run(self, work, on_success=None, *, status=None) -> None:
         target_status = self.status if status is None else status
         target_status.set("Loading...")
 
         def runner() -> None:
+            # Tk is touched only by the main-thread poller, never from here.
             try:
                 result = work()
             except (DataProviderError, ValueError) as exc:
-                message = str(exc)
-                self.root.after(0, lambda: self._show_error(message, status))
+                self._results.put((lambda message: self._show_error(message, status), str(exc)))
             except Exception as exc:  # pragma: no cover - unexpected UI failure
-                message = f"Unexpected error: {exc}"
-                self.root.after(0, lambda: self._show_error(message, status))
+                self._results.put((lambda message: self._show_error(message, status), f"Unexpected error: {exc}"))
             else:
-                callback = on_success or self._show_result
-                self.root.after(0, lambda: callback(result))
+                self._results.put((on_success or self._show_result, result))
 
         Thread(target=runner, daemon=True).start()
 
@@ -264,6 +305,18 @@ class StockFollowerWindow:
         (self.status if status is None else status).set("Request failed.")
         messagebox.showerror("StockFollower", text, parent=self.root)
 
+    def _store_history(self, item, bars: list) -> None:
+        # Saving fetched prices is best-effort and must not block a query.
+        if self.store is None:
+            return
+        try:
+            trade_date = max(bars, key=lambda bar: bar.trade_date).trade_date
+            self.store.save_quote(item, trade_date)
+            self.store.save_bars(item.symbol, bars)
+            self.store.record_fetch(item.symbol, date.today())
+        except StorageError:
+            pass
+
     def show_history(self) -> None:
         try:
             symbol = self._symbol()
@@ -280,24 +333,33 @@ class StockFollowerWindow:
             self._show_error("History range must be between 1 and 24 months.")
             return
 
-        def work() -> tuple[str, list]:
+        def work() -> tuple[str, list, str]:
+            today = date.today()
+            # Same-day repeat query for this symbol reuses the database; the
+            # first query of a new day (or Refresh cache) re-downloads from the API.
+            if not refresh and self.store is not None and self.store.last_fetch(symbol) == today.isoformat():
+                bars = self.store.prices_since(symbol, _months_cutoff(today, months))
+                item = self.store.latest_quote(symbol)
+                if bars and item is not None:
+                    return _stock_report(item, bars), bars, f"資料庫（{today:%Y/%m/%d} 已更新）"
             bars = sorted(self.provider.history(symbol, months=months, refresh=refresh), key=lambda bar: bar.trade_date)
             if not bars:
                 raise DataProviderError("No historical price data is available.")
             item = self.provider.get_quote(symbol, refresh)
-            return _stock_report(item, bars), bars
+            self._store_history(item, bars)
+            return _stock_report(item, bars), bars, "現場下載"
 
-        def show_history_result(result: tuple[str, list]) -> None:
+        def show_history_result(result: tuple[str, list, str]) -> None:
             # Do not show an earlier search's price beside a different symbol.
             if self.symbol.get().strip() != symbol:
                 return
-            report, bars = result
+            report, bars, source = result
             latest_bar = max(bars, key=lambda bar: bar.trade_date)
             self.latest_close.set(f"上一次收盤價：{_money(latest_bar.close)}")
             self._show_result(report)
             self._history_chart_data = (bars, symbol)
             self._redraw_history_chart()
-            self.status.set("Done.")
+            self.status.set(f"來源：{source}")
 
         self._run(work, show_history_result)
 
@@ -466,6 +528,85 @@ class StockFollowerWindow:
         for row in rows:
             self.leaderboard_table.insert("", tk.END, values=row)
         self.leaderboard_status.set("Done." if rows else "此篩選條件沒有可用的排行資料。")
+
+    def show_dashboard(self) -> None:
+        refresh = self.leaderboard_refresh.get()
+
+        def work() -> tuple[dict, list]:
+            quotes = self.provider.leaderboard_quotes(refresh)
+            return market_breadth(quotes), industry_changes(quotes)
+
+        self._run(work, self._render_dashboard, status=self.leaderboard_status)
+
+    def _render_dashboard(self, result: tuple[dict, list]) -> None:
+        try:
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+        except ImportError:
+            self._show_error("Matplotlib is not installed. Run: python -m pip install -e .",
+                             self.leaderboard_status)
+            return
+
+        breadth, industries = result
+        window = getattr(self, "_dashboard_win", None)
+        if window is not None and window.winfo_exists():
+            for child in window.winfo_children():
+                child.destroy()
+        else:
+            window = tk.Toplevel(self.root)
+            self._dashboard_win = window
+        window.title("市場儀表板（上市）")
+        window.geometry("920x720")
+
+        adr = breadth["advance_decline_ratio"]
+        avg = breadth["avg_change_percent"]
+        cards = [
+            ("上漲 / 下跌 / 平盤", f"{breadth['advancers']} / {breadth['decliners']} / {breadth['unchanged']}"),
+            ("漲停 / 跌停（≥±9.9%）", f"{breadth['limit_up']} / {breadth['limit_down']}"),
+            ("騰落比 A/D", "-" if adr is None else f"{adr:.2f}"),
+            ("平均漲跌幅", "-" if avg is None else f"{avg:+.2f}%"),
+            ("總成交量", f"{breadth['total_volume']:,} 股"),
+            ("有效樣本 / 全部", f"{breadth['counted']} / {breadth['total']}"),
+        ]
+        header = ttk.Frame(window, padding=12)
+        header.pack(fill=tk.X)
+        for column, (label, value) in enumerate(cards):
+            header.columnconfigure(column, weight=1)
+            cell = ttk.Frame(header, padding=8)
+            cell.grid(row=0, column=column, sticky="nsew")
+            ttk.Label(cell, text=value, font=("Microsoft JhengHei", 15, "bold")).pack()
+            ttk.Label(cell, text=label).pack()
+
+        font = _cjk_font()
+        figure = Figure(figsize=(8, 5.5), dpi=100)
+        axis = figure.add_subplot(111)
+        top = industries[:15]
+        if top:
+            names = [row[0] for row in top]
+            values = [float(row[1]) for row in top]
+            # Taiwan convention: red for gains, green for losses.
+            colors = ["#d32f2f" if value >= 0 else "#2e7d32" for value in values]
+            positions = list(range(len(top)))
+            axis.barh(positions, values, color=colors)
+            axis.set_yticks(positions)
+            axis.set_yticklabels(names, fontproperties=font)
+            axis.invert_yaxis()  # strongest industry on top
+            axis.axvline(0, color="#888888", linewidth=0.8)
+            axis.set_xlabel("平均漲跌幅 (%)", fontproperties=font)
+            for position, value in zip(positions, values):
+                axis.text(value, position, f" {value:+.2f}", va="center",
+                          ha="left" if value >= 0 else "right", fontsize=8)
+        else:
+            axis.text(0.5, 0.5, "無可用產業資料", ha="center", va="center",
+                      fontproperties=font, transform=axis.transAxes)
+            axis.set_axis_off()
+        axis.set_title("各產業當日平均漲跌幅", fontproperties=font)
+        figure.subplots_adjust(left=0.22, right=0.97, top=0.92, bottom=0.1)
+
+        canvas = FigureCanvasTkAgg(figure, master=window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.leaderboard_status.set("Done.")
 
     def run(self) -> None:
         self.root.mainloop()

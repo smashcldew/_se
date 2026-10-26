@@ -48,3 +48,32 @@
 - `tables.py` 移除僅供 CLI 文字輸出使用的 `format_table` 與 `display_width`，保留 GUI 使用的 `leaderboard_rows`。
 - 移除 `providers.py` TWSE 報價中未使用的 `sign` 變數。
 - 移除對應的 CLI 測試；排行榜欄位對齊測試改為驗證 `leaderboard_rows` 的七欄輸出。驗證：`python -m pytest -q` 共 30 筆測試通過。
+
+## 2026-10-26：新增 SQLite 資料庫持久化股價
+
+- 新增 `stockfollower/storage.py` 的 `PriceStore`，以 SQLite 保存股價，資料庫檔為 `data/stockfollower.db`，不受啟動時快取清除影響。
+- 兩張表：`quotes`（代號、名稱、市場、日期、收盤、漲跌、漲跌幅、交易量、行業）與 `daily_bars`（日線 OHLC）；皆以 `(symbol, trade_date)` 為主鍵並採 upsert，價格以字串保存以保留 Decimal 精度。
+- 每個操作各自開啟連線，避免 GUI 背景執行緒共用連線的問題；資料庫錯誤包裝為 `StorageError`。
+- GUI 於個股搜尋時自動寫入：存入當日報價與整段日線（以最後交易日為日期）；排行榜查詢不寫入資料庫。寫入為最佳努力，失敗不影響畫面顯示。
+- 新增 `tests/test_storage.py`（round-trip、upsert、日期分隔、空輸入）與 GUI→DB 整合測試。驗證：`python -m pytest -q` 共 38 筆測試通過。
+
+## 2026-10-26：依查詢日期判斷現場 / 資料庫來源
+
+- 新增 `fetch_log` 表記錄每個代號「上次向 API 抓取的日期」；`PriceStore` 新增 `record_fetch()`／`last_fetch()`、`prices_since()`、`latest_quote()`。
+- 個股搜尋邏輯：當天第一次查該代號（或勾 `Refresh cache`）走 API 並存 DB、更新 `fetch_log`；同一天再查同一代號改讀 DB，不再連網；跨日則重新打 API。每個代號各自記錄。
+- 狀態列顯示資料來源：「來源：現場下載」或「來源：資料庫（日期 已更新）」。
+- 排行榜維持不進資料庫。
+- 新增同日重查讀 DB、`Refresh cache` 強制走 API 的測試。驗證：`python -m pytest -q` 共 39 筆測試通過。
+
+## 2026-10-26：修正排行榜（及個股查詢）只有第一次有反應的問題
+
+- 根因：`_run` 的背景執行緒直接呼叫 `self.root.after(...)`，從工作執行緒操作 Tkinter 並不安全；在 Windows 上常導致第一次之後的 callback 排不進事件迴圈，狀態卡在「Loading...」而看似無反應。
+- 修正：工作執行緒只把 `(callback, payload)` 放進執行緒安全的 `queue.Queue`，由主執行緒的 `_poll_results`（啟動時以 `after(50, ...)` 排程、持續輪詢）取出並更新畫面；所有 Tk 操作都回到主執行緒。
+- 同步更新兩個以舊 `root.after` 遞送機制撰寫的測試，改為從佇列取出 callback 驗證。驗證：`python -m pytest -q` 共 39 筆測試通過；另以真實事件迴圈連點排行榜四次，每次皆正常觸發與更新。
+
+## 2026-10-26：新增市場儀表板（dev 分支）
+
+- 新增 `stockfollower/dashboard.py`：`market_breadth()`（上漲／下跌／平盤、漲停／跌停以 ±9.9% 近似、總量、平均漲跌幅、騰落比）與 `industry_changes()`（各產業平均漲跌幅、依強弱排序）；皆為純函式，用既有的 TWSE 全市場報價計算，不需新資料來源。
+- GUI 於排行榜區新增「市場儀表板」按鈕，另開 Toplevel 顯示 KPI 卡 + 各產業平均漲跌幅長條圖（紅漲綠跌）；沿用 provider 與主執行緒佇列機制，重複點擊重用同一視窗。
+- 中文字型以 `_cjk_font()` 自動挑選系統可用字型（微軟正黑體等），找不到則回退預設。
+- 新增 `tests/test_dashboard.py`（breadth 計數／邊界、產業平均與排序、GUI 接線）。驗證：`python -m pytest -q` 共 44 筆測試通過；另以真實事件迴圈煙霧測試儀表板開啟與重用，無崩潰。

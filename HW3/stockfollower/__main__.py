@@ -1,4 +1,4 @@
-from .cli import main
+from .gui import launch
 
 
-main()
+launch()

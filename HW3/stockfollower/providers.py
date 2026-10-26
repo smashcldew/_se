@@ -109,7 +109,6 @@ class TwseProvider:
                 continue
             close = _number(row.get("ClosingPrice", ""))
             change = _number(row.get("Change", "")) if str(row.get("Change", "")).strip() else None
-            sign = str(row.get("Change", "")).strip()
             if str(row.get("UpDown", "")).strip() == "-" and change is not None:
                 change = -abs(change)
             previous = close - change if change is not None else None

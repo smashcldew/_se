@@ -1,16 +1,13 @@
-import contextlib
-import io
 import tempfile
 import unittest
-from argparse import Namespace
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from stockfollower import cli, gui, providers
+from stockfollower import gui, providers
 from stockfollower.industries import ALL_INDUSTRIES, UNKNOWN_INDUSTRY, industry_name
 from stockfollower.models import Quote
-from stockfollower.tables import display_width, format_table, leaderboard_rows
+from stockfollower.tables import leaderboard_rows
 
 
 def quote(symbol, industry, volume=1, percent=Decimal('1')):
@@ -90,16 +87,12 @@ class IndustryTests(unittest.TestCase):
         window.show_leaderboard()
         window._show_leaderboard_result.assert_not_called()
 
-    def test_cli_and_seven_column_alignment(self):
-        rows = [quote('2330', '半導體業'), quote('2603', '航運業')]
-        output = io.StringIO()
-        with patch.object(cli, '_provider') as provider, contextlib.redirect_stdout(output):
-            provider.return_value.leaderboard_quotes.return_value = rows
-            cli.leaderboard(Namespace(refresh=False, by='volume', limit=20))
-        self.assertIn('行業', output.getvalue())
-        self.assertIn('半導體業', output.getvalue())
-        table = format_table(['排名', '代號', '名稱', '收盤', '漲跌幅', '成交量', '行業'], leaderboard_rows(rows))
-        self.assertEqual(len({display_width(line) for line in table.splitlines()}), 1)
+    def test_leaderboard_rows_seven_columns(self):
+        rows = leaderboard_rows([quote('2330', '半導體業'), quote('2603', '航運業')])
+        self.assertEqual([len(row) for row in rows], [7, 7])
+        self.assertEqual([row[0] for row in rows], ['1', '2'])
+        self.assertEqual([row[1] for row in rows], ['2330', '2603'])
+        self.assertEqual([row[6] for row in rows], ['半導體業', '航運業'])
 
 
 if __name__ == '__main__':

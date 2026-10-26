@@ -38,3 +38,13 @@
 - 歷史圖升級為 K 線圖，加入 MA5（藍色）與 MA10（黃色）；週／月／年模式會先彙整 OHLC，再依該週期計算均線。
 - 歷史行情查詢改為只顯示內嵌 K 線與均線圖，不再顯示文字行情表；其他功能的文字輸出維持不變。
 - K 線 X 軸改為連續交易日序號，週末與休市日不再產生空白間距；刻度仍顯示實際交易日期。
+
+## 2026-10-26：移除 CLI、僅保留 GUI 並簡化程式碼
+
+- 移除 `stockfollower/cli.py`，`python -m stockfollower` 直接開啟桌面視窗；`pyproject.toml` 的 console script 改指向 `stockfollower.gui:launch`。
+- 清除 GUI 內已無按鈕使用的 `show_quote`、`show_report` 與 `_show_text_output`；`_show_result` 直接負責顯示報告區。
+- 統一錯誤處理：`_run` 的個股與排行榜錯誤皆走 `_show_error`，不再重複 messagebox 邏輯。
+- 將 `_chart_month_starts`、`_chart_year_starts`、`_chart_day_ticks` 合併為單一的 `_chart_starts(dates, key)`。
+- `tables.py` 移除僅供 CLI 文字輸出使用的 `format_table` 與 `display_width`，保留 GUI 使用的 `leaderboard_rows`。
+- 移除 `providers.py` TWSE 報價中未使用的 `sign` 變數。
+- 移除對應的 CLI 測試；排行榜欄位對齊測試改為驗證 `leaderboard_rows` 的七欄輸出。驗證：`python -m pytest -q` 共 30 筆測試通過。

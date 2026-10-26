@@ -61,33 +61,10 @@ def _chart_bars(bars: list, interval: str) -> list[tuple[date, float, float, flo
     ]
 
 
-def _chart_month_starts(dates: list[date]) -> list[int]:
-    if not dates:
-        return []
-    positions = [0]
-    for index in range(1, len(dates)):
-        if dates[index].month != dates[index - 1].month:
-            positions.append(index)
-    return positions
-
-
-def _chart_year_starts(dates: list[date]) -> list[int]:
-    if not dates:
-        return []
-    positions = [0]
-    for index in range(1, len(dates)):
-        if dates[index].year != dates[index - 1].year:
-            positions.append(index)
-    return positions
-
-
-def _chart_day_ticks(dates: list[date]) -> tuple[list[int], list[str]]:
-    """One tick per trading day, labeled with the day of month."""
-    if not dates:
-        return [], []
-    positions = list(range(len(dates)))
-    labels = [str(trade_date.day) for trade_date in dates]
-    return positions, labels
+def _chart_starts(dates: list[date], key) -> list[int]:
+    """Positions where `key(date)` changes, e.g. the first bar of each month."""
+    return [index for index in range(len(dates))
+            if index == 0 or key(dates[index]) != key(dates[index - 1])]
 
 
 def _draw_signal_markers(axis, dates: list[date], signals: list[Signal]) -> None:
@@ -252,24 +229,19 @@ class StockFollowerWindow:
             raise ValueError("Stock symbol must be a 4-digit number, e.g. 2330.")
         return symbol
 
-    def _run(self, work, on_success=None, *, status=None) -> None:  # type: ignore[no-untyped-def]
+    def _run(self, work, on_success=None, *, status=None) -> None:
         target_status = self.status if status is None else status
         target_status.set("Loading...")
-
-        def show_error(message: str) -> None:
-            if status is None:
-                self._show_error(message)
-            else:
-                target_status.set("Request failed.")
-                messagebox.showerror("StockFollower", message, parent=self.root)
 
         def runner() -> None:
             try:
                 result = work()
             except (DataProviderError, ValueError) as exc:
-                self.root.after(0, lambda message=str(exc): show_error(message))
+                message = str(exc)
+                self.root.after(0, lambda: self._show_error(message, status))
             except Exception as exc:  # pragma: no cover - unexpected UI failure
-                self.root.after(0, lambda message=f"Unexpected error: {exc}": show_error(message))
+                message = f"Unexpected error: {exc}"
+                self.root.after(0, lambda: self._show_error(message, status))
             else:
                 callback = on_success or self._show_result
                 self.root.after(0, lambda: callback(result))
@@ -277,47 +249,20 @@ class StockFollowerWindow:
         Thread(target=runner, daemon=True).start()
 
     def _show_result(self, text: str) -> None:
-        self._show_text_output()
+        self.report_frame.grid()
         self.output.configure(state=tk.NORMAL, wrap=tk.WORD)
         self.output.delete("1.0", tk.END)
         self.output.insert(tk.END, text)
         self.output.configure(state=tk.DISABLED)
         self.status.set("Done.")
 
-    def _show_text_output(self) -> None:
-        self.report_frame.grid()
-
     def _clear_search_summary(self, *_args) -> None:
         self.latest_close.set("上一次收盤價：-")
         self.latest_signal.set("上一次交叉：-｜建議：-｜交叉價格：-")
 
-    def _show_error(self, text: str) -> None:
-        self.status.set("Request failed.")
+    def _show_error(self, text: str, status: tk.StringVar | None = None) -> None:
+        (self.status if status is None else status).set("Request failed.")
         messagebox.showerror("StockFollower", text, parent=self.root)
-
-    def show_quote(self) -> None:
-        try:
-            symbol = self._symbol()
-        except ValueError as exc:
-            self._show_error(str(exc))
-            return
-        refresh = self.refresh.get()
-
-        def work() -> str:
-            item = self.provider.get_quote(symbol, refresh)
-            averages = moving_averages(self.provider.history(symbol, months=3, refresh=refresh))
-            pct = "-" if item.change_percent is None else f"{item.change_percent:+.2f}%"
-            lines = [
-                f"{item.symbol} {item.name} ({item.market})",
-                f"Close: {_money(item.close)}",
-                f"Change: {_money(item.change)}  Change %: {pct}",
-                f"Volume: {item.volume:,} shares",
-                "",
-                "  ".join(f"MA{period}: {_money(value)}" for period, value in averages.items()),
-            ]
-            return "\n".join(lines)
-
-        self._run(work)
 
     def show_history(self) -> None:
         try:
@@ -421,9 +366,10 @@ class StockFollowerWindow:
         kdj_axis.axhline(20, color="#bdbdbd", linewidth=0.8, linestyle="--")
         price_axis.margins(x=0)
         price_axis.set_xlim(-0.5, len(ohlc) - 0.5)
-        day_positions, day_labels = _chart_day_ticks(dates)
-        month_positions = _chart_month_starts(dates)
-        year_positions = _chart_year_starts(dates)
+        day_positions = list(range(len(dates)))  # one tick per trading day
+        day_labels = [str(trade_date.day) for trade_date in dates]
+        month_positions = _chart_starts(dates, lambda d: d.month)
+        year_positions = _chart_starts(dates, lambda d: d.year)
         price_axis.set_xticks(day_positions)
         price_axis.set_xticklabels([])
         price_axis.tick_params(axis="x", which="major", length=4, labelbottom=False)
@@ -482,20 +428,6 @@ class StockFollowerWindow:
         toolbar.pack(side=tk.BOTTOM, fill=tk.X)
         canvas.draw()
         canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-    def show_report(self) -> None:
-        try:
-            symbol = self._symbol()
-        except ValueError as exc:
-            self._show_error(str(exc))
-            return
-        refresh = self.refresh.get()
-
-        def work() -> str:
-            item = self.provider.get_quote(symbol, refresh)
-            return _stock_report(item, self.provider.history(symbol, months=6, refresh=refresh))
-
-        self._run(work)
 
     def show_leaderboard(self) -> None:
         refresh = self.leaderboard_refresh.get()

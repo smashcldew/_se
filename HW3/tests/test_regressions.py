@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from stockfollower import cli, gui, providers
+from stockfollower import gui, providers
 
 
 class RegressionTests(unittest.TestCase):
@@ -61,12 +61,6 @@ class RegressionTests(unittest.TestCase):
                 providers.clear_cache()
                 provider.latest_quotes()
                 self.assertEqual(fetch.call_count, 2)
-
-    def test_cli_clears_cache_before_query(self):
-        events = []
-        with patch('sys.argv', ['stockfollower', 'quote', '2330']), patch.object(cli, 'clear_cache', side_effect=lambda: events.append('clear')), patch.object(cli, 'quote', side_effect=lambda args: events.append('query')):
-            cli.main()
-        self.assertEqual(events, ['clear', 'query'])
 
     def test_gui_clears_cache_before_window_creation(self):
         events = []

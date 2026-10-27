@@ -77,3 +77,9 @@
 - GUI 於排行榜區新增「市場儀表板」按鈕，另開 Toplevel 顯示 KPI 卡 + 各產業平均漲跌幅長條圖（紅漲綠跌）；沿用 provider 與主執行緒佇列機制，重複點擊重用同一視窗。
 - 中文字型以 `_cjk_font()` 自動挑選系統可用字型（微軟正黑體等），找不到則回退預設。
 - 新增 `tests/test_dashboard.py`（breadth 計數／邊界、產業平均與排序、GUI 接線）。驗證：`python -m pytest -q` 共 44 筆測試通過；另以真實事件迴圈煙霧測試儀表板開啟與重用，無崩潰。
+
+## 2026-10-27：資料路徑錨定專案根目錄（可攜性）
+
+- 原本 `CACHE_DIR = Path("data/cache")`、`DB_PATH = Path("data/stockfollower.db")` 是相對「執行時的 cwd」，換目錄啟動就會把快取／資料庫建到非預期位置。
+- 改為以套件位置錨定：`Path(__file__).resolve().parent.parent / "data" / ...`，永遠指向 `HW3/data`，不論從哪個工作目錄啟動。目的：整個 HW3 複製到任何地方、只要環境備妥即可執行。
+- 測試用 patch `CACHE_DIR`／傳入暫存 DB 路徑，不受預設值改動影響。驗證：44 筆測試通過；並從其他 cwd 載入確認路徑仍解析到 HW3/data。

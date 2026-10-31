@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HW4 Git Flow 與 GitHub Flow｜現代軟體工程作業</title>
+<meta name="description" content="建立 dev 分支、合併回 main，再練習 fork 別人的倉庫並送出 pull request 的操作筆記。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/works.js" defer></script>
+<script src="../assets/site.js" defer></script>
+</head>
+<body class="lane-4" data-work="hw4" data-base="../">
+<a class="skip" href="#main">跳到內容</a>
+<div class="topbar"><a class="back" href="../">作業總覽</a></div>
+
+<main id="main" class="page">
+  <header class="work-head">
+    <p class="label">HW4</p>
+    <h1>Git Flow 與 GitHub Flow</h1>
+    <p class="lede">第四週的操作筆記：先用分支開發、合併回主分支，再練習 fork 別人的倉庫並送出 pull request。</p>
+    <p class="tags">Git、GitHub、分支、pull request</p>
+    <ul class="links">
+      <li><a href="https://github.com/smashcldew/_se/tree/main/HW4">原始碼</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/HW4/README.md">完整 README</a></li>
+      <li><a href="https://github.com/smashcldew/_se">母專案</a></li>
+    </ul>
+  </header>
+
+  <section>
+    <h2>操作步驟</h2>
+
+    <h3>1. 建立 dev 分支並推到 GitHub</h3>
+    <p>在母專案資料夾（<code>_se</code>）開啟 Git Bash，建立並切換到 <code>dev</code> 分支，再把修改推上去：</p>
+    <div class="code"><pre><code>git checkout -b dev
+git add -A
+git commit -m "dev branch"
+git push origin dev</code></pre></div>
+
+    <h3>2. 切回 main 並合併</h3>
+    <div class="code"><pre><code>git checkout main
+git merge dev</code></pre></div>
+    <p>把 <code>dev</code> 的修改合併進主分支。</p>
+
+    <h3>3. Fork</h3>
+    <p>Fork 要在 GitHub 上對別人的倉庫操作，會複製一份到自己的帳號底下。</p>
+
+    <h3>4. 送出 pull request</h3>
+    <p>在 fork 出來的專案裡修改，再推上去：</p>
+    <div class="code"><pre><code>git add -A
+git commit -m "..."
+git push</code></pre></div>
+    <p>最後在 GitHub 上按「Compare &amp; pull request」，就能把修改送回原本的倉庫。</p>
+  </section>
+</main>
+
+<nav class="work-nav" id="work-nav" aria-label="其他作業"></nav>
+</body>
+</html>

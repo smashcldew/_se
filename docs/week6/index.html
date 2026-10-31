@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Week6 Docker 微服務｜現代軟體工程作業</title>
+<meta name="description" content="用 Docker Compose 啟動 Nginx、Node.js、Python、Rust 與 PostgreSQL，網頁即時顯示各服務狀態。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/works.js" defer></script>
+<script src="../assets/site.js" defer></script>
+</head>
+<body class="lane-5" data-work="week6" data-base="../">
+<a class="skip" href="#main">跳到內容</a>
+<div class="topbar"><a class="back" href="../">作業總覽</a></div>
+
+<main id="main" class="page">
+  <header class="work-head">
+    <p class="label">Week6</p>
+    <h1>Docker 微服務</h1>
+    <p class="lede">用 Docker Compose 一次啟動 Nginx、Node.js、Python、Rust 與 PostgreSQL。網頁會顯示各服務的健康狀態，並提供留言、字詞統計與質數運算。</p>
+    <p class="tags">Docker、Compose、Nginx、PostgreSQL</p>
+    <ul class="links">
+      <li><a href="https://github.com/smashcldew/_se/tree/main/Week6">原始碼</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/Week6/README.md">完整 README</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/Week6/docker-compose.yml">docker-compose.yml</a></li>
+    </ul>
+  </header>
+
+  <section>
+    <h2>服務架構</h2>
+    <p>瀏覽器只認得 Nginx。Nginx 依路徑把請求轉給對應的服務，其他服務都在 Compose 建立的內部網路裡互相通訊，只有 Nginx 的 8080 埠對主機開放。</p>
+    <div class="diagram">
+      <svg viewBox="0 0 640 372" role="img" aria-label="架構圖：瀏覽器連到 nginx，nginx 依路徑轉給 node、python、rust，node 與 python 連到 PostgreSQL">
+        <rect class="net" x="20" y="74" width="600" height="260" rx="10"/>
+        <text class="sub" x="34" y="96">app_net 內部網路</text>
+
+        <rect class="box" x="240" y="8" width="160" height="42" rx="6"/>
+        <text x="320" y="34" text-anchor="middle">瀏覽器 localhost:8080</text>
+        <path class="link" d="M320 50V92"/>
+
+        <rect class="box" x="240" y="92" width="160" height="44" rx="6"/>
+        <text x="320" y="119" text-anchor="middle">nginx 反向代理</text>
+
+        <path class="link" d="M320 136V164H120V192"/>
+        <path class="link" d="M320 136V192"/>
+        <path class="link" d="M320 136V164H520V192"/>
+        <text class="sub" x="112" y="158" text-anchor="end">/api/node/</text>
+        <text class="sub" x="328" y="184">/api/python/</text>
+        <text class="sub" x="528" y="158">/api/rust/</text>
+
+        <rect class="box" x="30" y="192" width="180" height="46" rx="6"/>
+        <text x="120" y="212" text-anchor="middle">node</text>
+        <text class="sub" x="120" y="229" text-anchor="middle">建立與查詢留言</text>
+
+        <rect class="box" x="230" y="192" width="180" height="46" rx="6"/>
+        <text x="320" y="212" text-anchor="middle">python</text>
+        <text class="sub" x="320" y="229" text-anchor="middle">字詞頻率與平均長度</text>
+
+        <rect class="box" x="430" y="192" width="180" height="46" rx="6"/>
+        <text x="520" y="212" text-anchor="middle">rust</text>
+        <text class="sub" x="520" y="229" text-anchor="middle">質數運算</text>
+
+        <path class="link" d="M120 238V284"/>
+        <path class="link" d="M320 238V284"/>
+
+        <rect class="box" x="60" y="284" width="320" height="42" rx="6"/>
+        <text x="220" y="310" text-anchor="middle">db（PostgreSQL 16）</text>
+        <text class="sub" x="220" y="352" text-anchor="middle">留言存在 named volume：postgres_data</text>
+      </svg>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>容器</th><th>技術</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td><code>nginx</code></td><td>Nginx 1.27（非 root）</td><td>靜態網頁與反向代理，唯一對主機開放 <code>8080</code></td></tr>
+          <tr><td><code>node</code></td><td>Node.js 20、Express、pg</td><td>建立與查詢留言</td></tr>
+          <tr><td><code>python</code></td><td>Python 3.12、Flask、psycopg</td><td>讀取留言，計算字詞頻率與平均長度</td></tr>
+          <tr><td><code>rust</code></td><td>Rust</td><td>計算指定上限內的質數</td></tr>
+          <tr><td><code>db</code></td><td>PostgreSQL 16</td><td>儲存留言，資料放在 named volume</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Node 與 Python 用 Compose 的服務名稱 <code>db</code> 連資料庫，不能用 <code>localhost</code>。</p>
+  </section>
+
+  <section>
+    <h2>在自己的電腦啟動</h2>
+    <div class="note"><p>這個專案要跑 Docker 容器，GitHub Pages 無法執行，需要在自己的電腦上啟動。</p></div>
+    <p>需要 Docker Desktop（含 Docker Compose v2）。在 <code>Week6</code> 資料夾執行：</p>
+    <div class="code"><pre><code>docker compose up --build -d
+docker compose ps</code></pre></div>
+    <p>再開啟 <code>http://localhost:8080</code>。健康狀態卡每五秒更新一次。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>想做的事</th><th>指令</th></tr></thead>
+        <tbody>
+          <tr><td>停止服務、保留資料</td><td><code>docker compose stop</code>，之後用 <code>docker compose start</code> 再啟動</td></tr>
+          <tr><td>移除容器與網路，volume 仍保留</td><td><code>docker compose down</code></td></tr>
+          <tr><td>連留言資料一起刪除</td><td><code>docker compose down -v</code></td></tr>
+          <tr><td>示範服務彼此獨立</td><td><code>docker compose stop python</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note"><p><code>down -v</code> 會移除 <code>postgres_data</code>，資料無法還原。重新建立資料庫後，<code>db/init.sql</code> 會再執行一次。</p></div>
+    <p>停掉 Python 之後，統計與 Python 的狀態會顯示離線，留言與 Rust 的質數運算仍然可以使用。</p>
+  </section>
+
+  <section>
+    <h2>核心概念</h2>
+    <dl class="terms">
+      <dt>Image（映像檔）</dt>
+      <dd>建置容器用的唯讀模板。<code>docker compose build</code> 依各服務的 Dockerfile 建置，同一個 image 可以建立多個容器。</dd>
+      <dt>Container（容器）</dt>
+      <dd>image 執行後的隔離環境。容器可以替換、停止，容器內的一般檔案不適合當永久儲存。</dd>
+      <dt>Volume（磁碟區）</dt>
+      <dd>由 Docker 管理、可跨容器生命週期保存的資料空間。<code>postgres_data</code> 掛載到 PostgreSQL 的資料目錄，所以移除 <code>db</code> 容器不會清掉留言。</dd>
+      <dt>Network（網路）</dt>
+      <dd>Compose 建立 <code>app_net</code>，讓服務用名稱彼此尋址，例如 <code>node</code> 連到 <code>db:5432</code>。資料庫與 API 沒有對外開放埠。</dd>
+      <dt>Compose</dt>
+      <dd>用 <code>docker-compose.yml</code> 描述服務、建置、環境變數、網路、volume、健康檢查與啟動順序，一次操作整個系統。</dd>
+      <dt>反向代理</dt>
+      <dd>瀏覽器只跟 Nginx 溝通，Nginx 根據路徑把請求送到內部服務，也負責提供靜態網頁。</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Dockerfile 寫法重點</h2>
+    <ol>
+      <li><b>善用快取分層。</b>先複製變動少的依賴清單並安裝，最後才複製常改的程式碼。只改程式時，套件安裝那一層可以沿用快取。Node 先 <code>COPY package*.json</code> 再 <code>npm ci</code>，Python 先複製 <code>requirements.txt</code>。</li>
+      <li><b>Multi-stage build。</b>用多個 <code>FROM</code> 階段分開建置與執行。Rust 在 builder 階段編譯，最終 image 只有執行檔與精簡的 Alpine 基底，體積小、工具也少。</li>
+      <li><b>不要用 root 執行程式。</b>用 <code>USER node</code> 或專用的 <code>appuser</code>，把服務的權限降到最低。</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>常用指令</h2>
+    <div class="code"><pre><code>docker compose logs -f                              # 持續查看全部服務日誌
+docker compose logs -f node                         # 只看 Node 日誌
+docker compose exec db psql -U demo -d docker_demo  # 進入資料庫命令列
+docker compose build node                           # 只重建 Node image
+docker compose restart node                         # 重啟 Node 容器
+docker image ls                                     # 列出本機 images
+docker volume ls                                    # 列出 volumes
+docker network ls                                   # 列出 networks
+docker system df                                    # 查看 Docker 磁碟使用量</code></pre></div>
+  </section>
+</main>
+
+<nav class="work-nav" id="work-nav" aria-label="其他作業"></nav>
+</body>
+</html>

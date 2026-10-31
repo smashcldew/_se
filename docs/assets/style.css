@@ -1,0 +1,464 @@
+/* 現代軟體工程作業網站：共用樣式
+   設計概念：母專案是一條主線，每份作業像從主線分出去的一條分支。
+   每份作業有自己的代表色（--lane），入口頁與作業頁都沿用。 */
+
+:root {
+  color-scheme: light dark;
+
+  --paper: #fbfcfd;
+  --surface: #eff2f7;
+  --ink: #172033;
+  --muted: #566178;
+  --rule: #d5dbe5;
+
+  --lane-1: #0b7a91;
+  --lane-2: #3057c4;
+  --lane-3: #9a5b00;
+  --lane-4: #c2362f;
+  --lane-5: #1f7a4f;
+  --lane-6: #7a3fc2;
+  --lane: var(--ink);
+
+  --display: "LXGW WenKai TC", "Kaiti TC", "BiauKai", "DFKai-SB", "Noto Sans TC", serif;
+  --sans: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", "Heiti TC", system-ui, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+
+  --rail-x: 15px;
+  --lane-x: 46px;
+  --text-x: 70px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0f1623;
+    --surface: #18212f;
+    --ink: #e6ebf5;
+    --muted: #9aa6bd;
+    --rule: #2a3547;
+
+    --lane-1: #4cc3dc;
+    --lane-2: #8aa8ff;
+    --lane-3: #f0b44a;
+    --lane-4: #ff7a70;
+    --lane-5: #5dd39e;
+    --lane-6: #b98cff;
+  }
+}
+
+@media (max-width: 480px) {
+  :root { --lane-x: 36px; --text-x: 54px; }
+}
+
+.lane-1 { --lane: var(--lane-1); }
+.lane-2 { --lane: var(--lane-2); }
+.lane-3 { --lane: var(--lane-3); }
+.lane-4 { --lane: var(--lane-4); }
+.lane-5 { --lane: var(--lane-5); }
+.lane-6 { --lane: var(--lane-6); }
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 1rem/1.8 var(--sans);
+}
+
+h1, h2, h3 {
+  font-family: var(--display);
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0;
+}
+
+a { color: inherit; text-underline-offset: 0.2em; }
+
+:focus-visible {
+  outline: 3px solid var(--lane);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+.skip {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0.5rem 0.9rem;
+  z-index: 10;
+}
+.skip:focus { top: 1rem; }
+
+code, pre, kbd { font-family: var(--mono); }
+
+/* ───────── 入口頁 ───────── */
+
+.portal {
+  max-width: 58rem;
+  margin: 0 auto;
+  padding: clamp(2.5rem, 7vw, 5rem) 1.25rem 4rem;
+}
+
+.portal-head h1 {
+  font-size: clamp(2.3rem, 7vw, 3.8rem);
+  line-height: 1.15;
+  margin-bottom: 1rem;
+}
+
+.portal-head p {
+  margin: 0.2rem 0;
+  max-width: 34em;
+  color: var(--muted);
+}
+
+.rail {
+  position: relative;
+  list-style: none;
+  margin: 3.2rem 0 0;
+  padding: 0;
+}
+
+.rail::before {
+  content: "";
+  position: absolute;
+  left: var(--rail-x);
+  top: 0.8rem;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(var(--ink) 88%, transparent);
+  transform-origin: top;
+  animation: draw 0.9s cubic-bezier(0.3, 0.6, 0.2, 1) both;
+}
+
+@keyframes draw {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+.stop {
+  position: relative;
+  padding: 0 0 3rem var(--text-x);
+}
+
+/* 從主線分出去的分支：先往右，再彎下來接到圓點 */
+.stop::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--rail-x) + 1px);
+  top: -1.1rem;
+  width: calc(var(--lane-x) - var(--rail-x));
+  height: calc(1.1rem + 0.8rem);
+  border-top: 2px solid var(--lane);
+  border-right: 2px solid var(--lane);
+  border-top-right-radius: 16px;
+  animation: branch 0.5s 0.5s ease-out both;
+}
+
+.stop .dot {
+  position: absolute;
+  left: calc(var(--lane-x) - 6px);
+  top: 0.8rem;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--lane);
+  box-shadow: 0 0 0 3px var(--paper);
+  transition: transform 0.15s ease-out;
+  animation: branch 0.5s 0.5s ease-out both;
+}
+
+.stop:hover .dot { transform: scale(1.35); }
+
+@keyframes branch {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.stop.head::before { display: none; }
+
+.stop.head .dot {
+  left: calc(var(--rail-x) + 1px - 7px);
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  background: var(--ink);
+  animation: none;
+}
+
+.stop.head { padding-bottom: 3.4rem; }
+
+.repo-link {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.stop.head p { margin: 0.1rem 0 0; color: var(--muted); max-width: 34em; }
+
+.stop .label {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--lane);
+}
+
+.stop h2 {
+  font-size: clamp(1.45rem, 4vw, 1.85rem);
+  margin: 0.05rem 0 0.35rem;
+}
+
+.stop h2 a { text-decoration: none; }
+
+.stop h2 a::after {
+  content: "";
+  position: absolute;
+  inset: -0.4rem -0.4rem 1.2rem calc(var(--lane-x) - 14px);
+}
+
+.stop:hover h2 a,
+.stop h2 a:focus-visible {
+  text-decoration: underline;
+  text-decoration-color: var(--lane);
+  text-decoration-thickness: 3px;
+}
+
+.stop .summary { margin: 0 0 0.5rem; max-width: 36em; }
+
+.stop .tags { margin: 0 0 0.35rem; color: var(--muted); font-size: 0.92rem; }
+
+.stop .links { margin: 0; font-size: 0.92rem; }
+.stop .links a { position: relative; z-index: 1; color: var(--muted); }
+.stop .links a:hover { color: var(--ink); }
+
+.site-foot {
+  max-width: 58rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 3rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  border-top: 1px solid var(--rule);
+}
+
+/* ───────── 作業頁 ───────── */
+
+.topbar {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 0;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.back::before {
+  content: "";
+  width: 22px;
+  height: 14px;
+  margin-top: -6px;
+  border-left: 2px solid var(--lane);
+  border-bottom: 2px solid var(--lane);
+  border-bottom-left-radius: 10px;
+}
+
+.back:hover { text-decoration: underline; text-decoration-color: var(--lane); text-decoration-thickness: 3px; }
+
+.page {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 0 1.25rem 4rem;
+}
+
+.work-head {
+  margin: 2rem 0 3rem;
+  padding-left: 1.25rem;
+  border-left: 4px solid var(--lane);
+}
+
+.work-head .label { margin: 0; font-weight: 700; color: var(--lane); }
+
+.work-head h1 {
+  font-size: clamp(2.1rem, 6vw, 3.2rem);
+  line-height: 1.2;
+  margin: 0.1rem 0 0.8rem;
+}
+
+.work-head .lede { margin: 0 0 0.8rem; font-size: 1.1rem; max-width: 34em; }
+.work-head .tags { margin: 0 0 1rem; color: var(--muted); }
+
+.work-head .links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.work-head .links a { font-weight: 500; text-decoration-color: var(--lane); text-decoration-thickness: 2px; }
+
+.page section {
+  margin-top: 3.2rem;
+  padding-top: 1.6rem;
+  border-top: 1px solid var(--rule);
+}
+
+.page section:first-of-type { margin-top: 0; }
+
+.page h2 { font-size: 1.6rem; margin-bottom: 0.8rem; }
+.page h3 { font-size: 1.2rem; margin: 1.6rem 0 0.4rem; }
+.page p { margin: 0.7rem 0; max-width: 40em; }
+.page ul, .page ol { padding-left: 1.4rem; max-width: 40em; }
+.page li { margin: 0.35rem 0; }
+.page li::marker { color: var(--lane); }
+
+.page code {
+  background: var(--surface);
+  padding: 0.08em 0.35em;
+  border-radius: 4px;
+  font-size: 0.88em;
+  word-break: break-word;
+}
+
+.code { position: relative; margin: 1rem 0; }
+
+.code pre {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  background: var(--surface);
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.code pre code { background: none; padding: 0; font-size: inherit; word-break: normal; }
+
+.code .copy {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  font: 500 0.8rem/1 var(--sans);
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+}
+.code .copy:hover { color: var(--ink); border-color: var(--ink); }
+
+.table-wrap { overflow-x: auto; margin: 1rem 0; }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.94rem; line-height: 1.6; }
+
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.6rem 1rem 0.6rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+th { font-weight: 700; border-bottom: 2px solid var(--ink); white-space: nowrap; }
+td.num, th.num { text-align: right; }
+.table-wrap table { min-width: 30rem; }
+
+.note {
+  margin: 1.2rem 0;
+  padding: 0.2rem 0 0.2rem 1rem;
+  border-left: 3px solid var(--lane);
+  color: var(--muted);
+  max-width: 40em;
+}
+.note p { margin: 0.3rem 0; }
+
+dl.terms { margin: 1rem 0; max-width: 40em; }
+dl.terms dt { font-weight: 700; margin-top: 1rem; }
+dl.terms dt::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.55rem;
+  border-radius: 50%;
+  background: var(--lane);
+  vertical-align: 0.08em;
+}
+dl.terms dd { margin: 0.15rem 0 0 1.05rem; color: var(--muted); }
+
+/* 分層圖（HW2） */
+.layers { list-style: none; margin: 1.4rem 0; padding: 0; max-width: 26rem; }
+
+.layers li {
+  position: relative;
+  margin: 0;
+  padding: 0.65rem 1rem;
+  border: 1.5px solid var(--ink);
+  border-radius: 6px;
+  background: var(--paper);
+  line-height: 1.5;
+}
+
+.layers li + li { margin-top: 1.6rem; }
+
+.layers li + li::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -1.6rem;
+  height: 1.6rem;
+  border-left: 2px solid var(--lane);
+}
+
+.layers b { display: block; }
+.layers small { color: var(--muted); font-size: 0.88rem; }
+
+/* 架構圖（Week6） */
+.diagram { margin: 1.4rem 0; max-width: 40rem; }
+.diagram svg { width: 100%; height: auto; display: block; }
+.diagram .box { fill: var(--paper); stroke: var(--ink); stroke-width: 1.5; }
+.diagram .net { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 5; }
+.diagram .link { fill: none; stroke: var(--lane); stroke-width: 2; }
+.diagram text { fill: var(--ink); font: 500 14px var(--sans); }
+.diagram text.sub { fill: var(--muted); font-size: 12px; font-weight: 400; }
+
+/* 上一份／下一份 */
+.work-nav {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--rule);
+}
+
+.work-nav a {
+  display: block;
+  max-width: 48%;
+  text-decoration: none;
+  line-height: 1.5;
+}
+
+.work-nav a small { display: block; color: var(--muted); font-size: 0.85rem; }
+.work-nav a span { font-weight: 700; }
+.work-nav a:hover span { text-decoration: underline; text-decoration-color: var(--lane); text-decoration-thickness: 3px; text-underline-offset: 0.2em; }
+.work-nav .next { margin-left: auto; text-align: right; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rail::before, .stop::before, .stop .dot { animation: none; }
+  .stop .dot { transition: none; }
+}
+
+/* 表格第一欄的檔名不要被拆成兩行 */
+td:first-child code { white-space: nowrap; }

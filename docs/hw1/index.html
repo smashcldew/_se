@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HW1 MiniCurl｜現代軟體工程作業</title>
+<meta name="description" content="用 Go 寫的迷你 curl：可指定請求方法、標頭、Cookie 與 Basic Auth，也能同時請求多個網址。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/works.js" defer></script>
+<script src="../assets/site.js" defer></script>
+</head>
+<body class="lane-1" data-work="hw1" data-base="../">
+<a class="skip" href="#main">跳到內容</a>
+<div class="topbar"><a class="back" href="../">作業總覽</a></div>
+
+<main id="main" class="page">
+  <header class="work-head">
+    <p class="label">HW1</p>
+    <h1>MiniCurl</h1>
+    <p class="lede">用 Go 寫的迷你 curl。可以指定請求方法、標頭、Cookie 與 Basic Auth，下載時顯示進度，也能同時向多個網址發出請求。</p>
+    <p class="tags">Go、命令列、HTTP、goroutine</p>
+    <ul class="links">
+      <li><a href="https://github.com/smashcldew/_se/tree/main/HW1">原始碼</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/HW1/README.md">完整 README</a></li>
+    </ul>
+  </header>
+
+  <section>
+    <h2>開始使用</h2>
+    <p>專案內附 Windows 可直接執行的 <code>mycurl.exe</code>。以下用 PowerShell，先進入專案資料夾：</p>
+    <div class="code"><pre><code>cd .\HW1
+.\mycurl.exe --help</code></pre></div>
+    <p>基本語法：</p>
+    <div class="code"><pre><code>.\mycurl.exe [選項] &lt;URL1&gt; &lt;URL2&gt; ...</code></pre></div>
+    <p>想從原始碼編譯，需要符合 <code>go.mod</code> 宣告版本的 Go 工具鏈：</p>
+    <div class="code"><pre><code>go mod download
+go build -o mycurl.exe .</code></pre></div>
+  </section>
+
+  <section>
+    <h2>選項一覽</h2>
+    <p>範例都省略了開頭的 <code>.\mycurl.exe</code>，需要網路連線。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>功能</th><th>選項</th><th>範例</th></tr></thead>
+        <tbody>
+          <tr><td>GET 請求</td><td>直接給網址（預設）</td><td><code>https://httpbin.org/get</code></td></tr>
+          <tr><td>指定請求方法</td><td><code>-X</code>、<code>--request</code></td><td><code>-X DELETE https://httpbin.org/delete</code></td></tr>
+          <tr><td>自訂標頭</td><td><code>-H</code>、<code>--header</code>（可重複）</td><td><code>-H 'Accept: application/json' https://httpbin.org/headers</code></td></tr>
+          <tr><td>傳送文字資料</td><td><code>-d</code>、<code>--data</code></td><td><code>-X POST -H 'Content-Type: text/plain' -d 'Hello MiniCurl' https://httpbin.org/post</code></td></tr>
+          <tr><td>傳送檔案內容</td><td><code>-d '@檔名'</code></td><td><code>-X POST -H 'Content-Type: application/json' -d '@payload.json' https://httpbin.org/post</code></td></tr>
+          <tr><td>儲存回應</td><td><code>-o</code>、<code>--output</code></td><td><code>-o response.json https://httpbin.org/get</code></td></tr>
+          <tr><td>顯示請求與回應標頭</td><td><code>-v</code>、<code>--verbose</code></td><td><code>-v https://httpbin.org/get</code></td></tr>
+          <tr><td>跟隨重新導向</td><td><code>-L</code>、<code>--location</code></td><td><code>-L https://httpbin.org/redirect/1</code></td></tr>
+          <tr><td>設定逾時</td><td><code>-m</code>、<code>--max-time</code>（秒，預設 30）</td><td><code>-m 5 https://httpbin.org/delay/2</code></td></tr>
+          <tr><td>Basic Auth</td><td><code>--user '帳號:密碼'</code></td><td><code>--user 'demo:secret' https://httpbin.org/basic-auth/demo/secret</code></td></tr>
+          <tr><td>自訂 Cookie</td><td><code>-b</code>、<code>--cookie</code>（可重複）</td><td><code>-b 'session=abc123' -b 'theme=dark' https://httpbin.org/cookies</code></td></tr>
+          <tr><td>停用下載進度</td><td><code>--no-progress</code></td><td><code>--no-progress -o response.json https://httpbin.org/get</code></td></tr>
+          <tr><td>略過 TLS 憑證驗證</td><td><code>-k</code>、<code>--insecure</code></td><td><code>-k https://localhost:8443</code></td></tr>
+          <tr><td>同時請求多個網址</td><td>用空白分隔，共用所有選項</td><td><code>https://httpbin.org/get https://httpbin.org/uuid</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>使用時要注意</h2>
+    <ul>
+      <li><code>-d</code> 不會自動改成 POST，也不會自動加上 <code>Content-Type</code>，要自己搭配 <code>-X</code> 與 <code>-H</code>。</li>
+      <li>沒有指定 <code>-o</code> 時，回應內容輸出到標準輸出；詳細資訊、錯誤與進度輸出到標準錯誤。</li>
+      <li>多個網址會同時執行，直接印在終端機時順序不固定，內容也可能交錯。加上 <code>-o</code> 可以分別存檔，例如 <code>result_1.json</code>、<code>result_2.json</code>。</li>
+      <li>下載進度只在有指定 <code>-o</code>，而且伺服器提供大於零的內容長度時才會顯示。</li>
+      <li>輸出檔案已存在時會被覆寫。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>為什麼選 Go</h2>
+    <dl class="terms">
+      <dt>不用安裝語言執行環境</dt>
+      <dd>Go 可以編譯成獨立執行檔。在相符的作業系統與處理器架構上，下載後就能執行，只有自己編譯時才需要 Go。</dd>
+      <dt>輕量的併發</dt>
+      <dd>goroutine 讓多個網址在同一個程序裡同時處理，不必為每個請求另外啟動程序。</dd>
+      <dt>執行效率好</dt>
+      <dd>程式編譯成機器碼，搭配併發，等待網路回應的時間可以讓其他請求繼續進行。</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>專案檔案</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>檔案</th><th>內容</th></tr></thead>
+        <tbody>
+          <tr><td><code>main.go</code></td><td>命令列參數解析、HTTP 請求、併發處理與下載進度（約 270 行）</td></tr>
+          <tr><td><code>go.mod</code></td><td>模組名稱 <code>mycurl</code>，使用 <code>github.com/spf13/pflag v1.0.10</code></td></tr>
+          <tr><td><code>go.sum</code></td><td>相依套件的校驗資訊</td></tr>
+          <tr><td><code>mycurl.exe</code></td><td>Windows 可直接執行的程式</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<nav class="work-nav" id="work-nav" aria-label="其他作業"></nav>
+</body>
+</html>

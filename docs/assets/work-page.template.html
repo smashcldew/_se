@@ -1,0 +1,46 @@
+<!doctype html>
+<!--
+  新作業頁面範本。
+  1. 複製這個檔案到 docs/<id>/index.html（例如 docs/hw5/index.html）
+  2. 把下面標示【改】的地方換掉；body 的 lane-N 要和 works.js 裡的 lane 一致
+  3. 在 docs/assets/works.js 加一筆資料，入口頁與「上一份／下一份」就會自動出現
+  常用元件：.code（程式碼）、.table-wrap（表格）、.note（提醒）、dl.terms（名詞解釋）
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HW5 作業名稱｜現代軟體工程作業</title><!-- 【改】 -->
+<meta name="description" content="一句話說明這份作業。"><!-- 【改】 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/works.js" defer></script>
+<script src="../assets/site.js" defer></script>
+</head>
+<body class="lane-1" data-work="hw5" data-base="../"><!-- 【改】lane 與 data-work -->
+<a class="skip" href="#main">跳到內容</a>
+<div class="topbar"><a class="back" href="../">作業總覽</a></div>
+
+<main id="main" class="page">
+  <header class="work-head">
+    <p class="label">HW5</p><!-- 【改】 -->
+    <h1>作業名稱</h1><!-- 【改】 -->
+    <p class="lede">用一兩句話說明這份作業在做什麼。</p>
+    <p class="tags">技術、關鍵字</p>
+    <ul class="links">
+      <li><a href="https://github.com/smashcldew/_se/tree/main/HW5">原始碼</a></li><!-- 【改】 -->
+    </ul>
+  </header>
+
+  <section>
+    <h2>開始使用</h2>
+    <p>說明文字。</p>
+    <div class="code"><pre><code>指令寫在這裡</code></pre></div>
+  </section>
+</main>
+
+<nav class="work-nav" id="work-nav" aria-label="其他作業"></nav>
+</body>
+</html>

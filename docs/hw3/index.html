@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HW3 StockFollower｜現代軟體工程作業</title>
+<meta name="description" content="台股研究桌面程式：查個股、看 K 線與 KDJ，並列出成交量與漲跌幅排行。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/works.js" defer></script>
+<script src="../assets/site.js" defer></script>
+</head>
+<body class="lane-3" data-work="hw3" data-base="../">
+<a class="skip" href="#main">跳到內容</a>
+<div class="topbar"><a class="back" href="../">作業總覽</a></div>
+
+<main id="main" class="page">
+  <header class="work-head">
+    <p class="label">HW3</p>
+    <h1>StockFollower</h1>
+    <p class="lede">台股研究與追蹤的桌面程式。輸入股票代號，就能看收盤價、K 線與 KDJ 提示，也能依成交量、漲幅、跌幅列出排行。</p>
+    <p class="tags">Python、Tkinter、SQLite、證交所與櫃買中心公開資料</p>
+    <ul class="links">
+      <li><a href="https://github.com/smashcldew/_se/tree/main/HW3">原始碼</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/HW3/README.md">完整 README</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/HW3/dev_history.md">開發驗證紀錄</a></li>
+    </ul>
+  </header>
+
+  <section>
+    <div class="note"><p>本工具僅供資訊整理與研究輔助，不構成投資建議。公開資料可能延遲、缺漏或修正，使用前請自行核對。</p></div>
+    <h2>在自己的電腦啟動</h2>
+    <p>這是桌面程式，需要在自己的電腦上執行。需要 Python 3.11 以上；視窗使用 Python 內建的 Tkinter，另外只依賴 <code>certifi</code> 與 <code>matplotlib</code>。</p>
+    <div class="code"><pre><code>cd .\HW3
+python -m pip install -r requirements.txt
+python -m stockfollower</code></pre></div>
+  </section>
+
+  <section>
+    <h2>視窗介面</h2>
+    <p>視窗左邊是個股區（約 70%），右邊是排行榜（約 30%）。兩邊的查詢結果與狀態各自獨立，排行榜不會蓋掉個股報告或 K 線。</p>
+    <dl class="terms">
+      <dt>個股區</dt>
+      <dd>在代號欄輸入四位數代號再按「搜尋」，顯示個股報告、最新收盤價、KDJ 交叉提示，以及內嵌的 K 線與 KDJ 圖。圖表可切換日、週、月、年取樣，查詢區間為 1 到 24 個月，預設 3 個月。</dd>
+      <dt>排行榜</dt>
+      <dd>依成交量、漲幅或跌幅列出前 20 名，也可以用產業別篩選。產業別來自證交所的上市公司基本資料，顯示中文行業名稱。</dd>
+      <dt>支援範圍</dt>
+      <dd>個股查詢支援證交所（TWSE）上市與櫃買中心（TPEx）上櫃股票，依代號自動選擇資料來源，例如 2330 與 6274。排行榜目前只涵蓋上市個股，興櫃尚未支援。</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>資料怎麼存</h2>
+    <p>查詢時才向官方公開 API 下載資料，同一次使用期間會重用快取；勾選 <code>Refresh cache</code> 可強制更新。啟動時會先清掉 <code>data/cache/</code> 裡本程式的 <code>twse_*.json</code> 與 <code>tpex_*.json</code> 快取。</p>
+    <p>個股查詢的結果另外寫進 SQLite 資料庫 <code>data/stockfollower.db</code>，會持續累積，不會被啟動時的清快取動作刪掉。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>資料表</th><th>內容</th><th>主鍵</th></tr></thead>
+        <tbody>
+          <tr><td><code>quotes</code></td><td>每日報價摘要：代號、名稱、市場、日期、收盤、漲跌、漲跌幅、成交量、產業別</td><td><code>(symbol, trade_date)</code></td></tr>
+          <tr><td><code>daily_bars</code></td><td>完整日線：開、高、低、收、成交量、漲跌</td><td><code>(symbol, trade_date)</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul>
+      <li>只有個股查詢會寫入資料庫，排行榜查詢不會。</li>
+      <li>重複查詢相同代號與日期會覆寫（upsert）。</li>
+      <li>價格以字串保存，才能保留 <code>Decimal</code> 的精度。</li>
+      <li>TPEx 歷史行情的成交量由「張」換算成「股」，精度依來源資料而定。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>程式結構</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>檔案</th><th>負責</th></tr></thead>
+        <tbody>
+          <tr><td><code>gui.py</code></td><td>Tkinter 桌面介面（約 520 行）</td></tr>
+          <tr><td><code>providers.py</code></td><td>向 TWSE 與 TPEx 取得行情與歷史資料</td></tr>
+          <tr><td><code>indicators.py</code></td><td>均線與 KDJ 等技術指標</td></tr>
+          <tr><td><code>signals.py</code></td><td>KDJ 黃金交叉與死亡交叉提示</td></tr>
+          <tr><td><code>storage.py</code></td><td>SQLite 儲存，<code>PriceStore</code> 提供 <code>recent_prices()</code> 與 <code>saved_quotes()</code></td></tr>
+          <tr><td><code>industries.py</code></td><td>產業別對照</td></tr>
+          <tr><td><code>models.py</code></td><td>報價與日線的資料型別</td></tr>
+          <tr><td><code>tables.py</code></td><td>排行榜每一列要顯示的內容</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>測試</h2>
+    <p><code>tests/</code> 內有指標、產業別、訊號、儲存、TPEx 與回歸測試六個檔案，用 pytest 執行：</p>
+    <div class="code"><pre><code>python -m pytest -q</code></pre></div>
+  </section>
+
+  <section>
+    <h2>下一階段</h2>
+    <ul>
+      <li>接入合規的新聞來源，做摘要與情緒分析。</li>
+      <li>儲存追蹤清單，並排程更新。</li>
+      <li>製作網頁介面。</li>
+    </ul>
+  </section>
+</main>
+
+<nav class="work-nav" id="work-nav" aria-label="其他作業"></nav>
+</body>
+</html>

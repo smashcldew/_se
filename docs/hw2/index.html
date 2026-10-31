@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HW2 校務系統｜現代軟體工程作業</title>
+<meta name="description" content="管理員、行政、學生、老師四種角色登入，處理選課、請假與點名；37 項測試全數通過。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/works.js" defer></script>
+<script src="../assets/site.js" defer></script>
+</head>
+<body class="lane-2" data-work="hw2" data-base="../">
+<a class="skip" href="#main">跳到內容</a>
+<div class="topbar"><a class="back" href="../">作業總覽</a></div>
+
+<main id="main" class="page">
+  <header class="work-head">
+    <p class="label">HW2</p>
+    <h1>校務系統</h1>
+    <p class="lede">用 Python、SQLite 與原生 HTML／CSS／JavaScript 做的校務系統。管理員、行政、學生、老師登入後，各自看到自己能用的功能。</p>
+    <p class="tags">Python、SQLite、HTML／CSS／JavaScript、REST API</p>
+    <ul class="links">
+      <li><a href="https://github.com/smashcldew/_se/tree/main/HW2">原始碼</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/HW2/README.md">完整 README</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/HW2/plan.md">開發規畫</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/HW2/attendance-module.md">點名模組說明</a></li>
+      <li><a href="../week7/">測試（Week7）</a></li>
+    </ul>
+  </header>
+
+  <section>
+    <h2>四種角色能做什麼</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>功能</th><th>學生</th><th>老師</th><th>行政</th><th>管理員</th></tr></thead>
+        <tbody>
+          <tr><td>課程搜尋</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+          <tr><td>選課與退選</td><td>個人</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>課表</td><td>個人</td><td>授課</td><td>—</td><td>全校</td></tr>
+          <tr><td>提出請假</td><td>個人</td><td>—</td><td>—</td><td>—</td></tr>
+          <tr><td>查詢請假</td><td>個人</td><td>全部</td><td>全部</td><td>全部</td></tr>
+          <tr><td>核准或駁回請假</td><td>—</td><td>✓</td><td>—</td><td>—</td></tr>
+          <tr><td>查閱出缺席</td><td>個人</td><td>授課課程</td><td>全校</td><td>全校</td></tr>
+          <tr><td>登錄、更正出缺席</td><td>—</td><td>授課課程</td><td>—</td><td>—</td></tr>
+          <tr><td>新增、編輯、刪除課程</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
+          <tr><td>管理帳號</td><td>—</td><td>—</td><td>—</td><td>✓</td></tr>
+          <tr><td>系統設定、備份、操作紀錄</td><td>—</td><td>—</td><td>—</td><td>✓</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>請假流程是「學生申請、老師核准或駁回、行政查閱紀錄」。只有老師能審核，後端 API 也是同樣的限制。</p>
+  </section>
+
+  <section>
+    <h2>在自己的電腦啟動</h2>
+    <div class="note"><p>這個系統有 Python 後端，GitHub Pages 只能放靜態網頁，所以要在自己的電腦上執行。</p></div>
+    <p>需要 Python 3.11 以上。在專案根目錄開啟 PowerShell：</p>
+    <div class="code"><pre><code>cd .\HW2
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe app.py</code></pre></div>
+    <p>接著開啟 <code>http://127.0.0.1:5500</code>。已經有 Python 環境時，也可以直接執行 <code>start.cmd</code>。</p>
+    <ul>
+      <li>第一次啟動會建立 <code>HW2/data/school.db</code> 與示範資料，之後重啟不會重設。</li>
+      <li>示範帳號與密碼列在 <a href="https://github.com/smashcldew/_se/blob/main/HW2/README.md">README</a>。</li>
+      <li>5500 埠若被 VS Code Live Server 佔用，請先停止 Live Server。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>系統怎麼分層</h2>
+    <ol class="layers">
+      <li><b>前端</b><small>HTML、CSS、JavaScript，透過同源的 HTTP JSON API 溝通</small></li>
+      <li><b>API 處理</b><small>登入、課程、選課、課表、請假、點名</small></li>
+      <li><b>角色權限檢查</b><small>每個 API 都依角色限制可做的事</small></li>
+      <li><b>資料存取層</b><small>集中處理資料庫讀寫與交易</small></li>
+      <li><b>SQLite</b><small>school.db，自動建立資料表並載入示範資料</small></li>
+    </ol>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>模組</th><th>負責</th></tr></thead>
+        <tbody>
+          <tr><td><code>auth.py</code></td><td>登入、session 與權限</td></tr>
+          <tr><td><code>courses.py</code></td><td>課程查詢與維護</td></tr>
+          <tr><td><code>enrollment.py</code></td><td>選課、退選與課表</td></tr>
+          <tr><td><code>leave.py</code></td><td>請假申請與審核</td></tr>
+          <tr><td><code>attendance.py</code></td><td>點名與出缺席紀錄</td></tr>
+          <tr><td><code>admin.py</code></td><td>管理員功能</td></tr>
+          <tr><td><code>database.py</code></td><td>資料表建立與示範資料</td></tr>
+          <tr><td><code>server.py</code></td><td>HTTP 路由與靜態檔案</td></tr>
+          <tr><td><code>extensions.py</code></td><td>用 <code>register()</code> 註冊新路由，沿用登入、權限與資料庫</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>設計上的重點</h2>
+    <ul>
+      <li>選課會檢查重複、容量與衝堂，並用 SQLite 寫入交易，避免多人同時選課造成超額。已有人選的課程不能刪除，容量也不能低於已選人數。</li>
+      <li>密碼用 Argon2id 雜湊。登入後網頁使用 HttpOnly、SameSite Cookie，session 有效 8 小時，登出立即撤銷，資料庫只保存 token 的雜湊。</li>
+      <li>以 Cookie 修改資料時須帶 <code>X-Requested-With: SchoolPortal</code>，後端也會拒絕跨來源操作。</li>
+      <li>老師可在自己的課程開啟點名，選定日期與節次後對全班點名，一次儲存。四種角色都能在權限範圍內查閱出缺席。</li>
+      <li>新增、編輯與刪除確認都用彈出視窗，可按 Esc 返回；版面支援桌面與手機。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>測試</h2>
+    <p>共 37 項測試，全部通過：單元測試 17 項、系統測試 11 項、瀏覽器端對端測試 9 項。測試放在 Week7 資料夾，說明見 <a href="../week7/">Week7 頁面</a>。</p>
+  </section>
+</main>
+
+<nav class="work-nav" id="work-nav" aria-label="其他作業"></nav>
+</body>
+</html>

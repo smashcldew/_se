@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Week7 HW2 測試指南｜現代軟體工程作業</title>
+<meta name="description" content="替校務系統寫的單元、系統與瀏覽器端對端測試，共 37 項。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/works.js" defer></script>
+<script src="../assets/site.js" defer></script>
+</head>
+<body class="lane-6" data-work="week7" data-base="../">
+<a class="skip" href="#main">跳到內容</a>
+<div class="topbar"><a class="back" href="../">作業總覽</a></div>
+
+<main id="main" class="page">
+  <header class="work-head">
+    <p class="label">Week7</p>
+    <h1>HW2 測試指南</h1>
+    <p class="lede">校務系統（HW2）的自動化測試：直接呼叫業務邏輯的單元測試、透過 HTTP API 驗證的系統測試，以及用 Playwright 操作真實瀏覽器的端對端（E2E）測試。</p>
+    <p class="tags">unittest、Playwright、E2E、Python</p>
+    <ul class="links">
+      <li><a href="https://github.com/smashcldew/_se/tree/main/Week7">原始碼</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/Week7/README.md">完整 README</a></li>
+      <li><a href="https://github.com/smashcldew/_se/blob/main/Week7/test-report.md">測試報告</a></li>
+      <li><a href="../hw2/">被測試的專案（HW2）</a></li>
+    </ul>
+  </header>
+
+  <section>
+    <h2>測試統計</h2>
+    <p>依測試程式裡的 <code>test_*</code> 方法統計，共 37 項。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>類別</th><th>檔案</th><th class="num">數量</th><th>涵蓋範圍</th></tr></thead>
+        <tbody>
+          <tr><td>單元測試</td><td><code>test_unit.py</code></td><td class="num">10</td><td>認證、角色、課程、選課、請假、隔離與備份</td></tr>
+          <tr><td>單元測試</td><td><code>test_attendance.py</code></td><td class="num">7</td><td>點名資料驗證、權限、批次保存、課堂摘要與資料庫升級</td></tr>
+          <tr><td>系統測試</td><td><code>test_system.py</code></td><td class="num">7</td><td>登入、權限、HTTP 流程、管理功能、靜態路由與資料保存</td></tr>
+          <tr><td>系統測試</td><td><code>test_attendance.py</code></td><td class="num">4</td><td>點名 HTTP 路由、角色範圍、篩選與持久化</td></tr>
+          <tr><td>瀏覽器 E2E</td><td><code>test_e2e.py</code></td><td class="num">9</td><td>真實瀏覽器中的登入、各角色工作流程、點名與介面行為</td></tr>
+          <tr><th>合計</th><th></th><th class="num">37</th><th>單元 17、系統 11、E2E 9</th></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>怎麼執行</h2>
+    <p>測試要從 <code>HW2</code> 專案根目錄執行，因為測試會匯入專案的 <code>school</code> 套件。E2E 另外需要 <code>requirements-dev.txt</code> 的套件與 Playwright 瀏覽器。PowerShell 範例：</p>
+    <div class="code"><pre><code>cd .\HW2
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m unittest discover -s ..\Week7\tests -t ..\Week7 -v</code></pre></div>
+    <p>只跑其中一個檔案，用 <code>-p</code> 指定檔名：</p>
+    <div class="code"><pre><code>python -m unittest discover -s ..\Week7\tests -t ..\Week7 -p test_unit.py -v</code></pre></div>
+    <p>可以換成 <code>test_system.py</code>、<code>test_attendance.py</code> 或 <code>test_e2e.py</code>。</p>
+    <ul>
+      <li>每項測試都使用臨時的 SQLite 資料庫。</li>
+      <li>系統與 E2E 測試用動態連接埠啟動本機服務，結束後關閉並清理資料。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>單元測試的幾個例子</h2>
+    <dl class="terms">
+      <dt>密碼雜湊</dt>
+      <dd>同一組密碼重複雜湊會得到不同結果，格式是 Argon2id；正確密碼可以驗證，錯誤密碼不能通過。</dd>
+      <dt>初始化與資料庫限制</dt>
+      <dd>必要的資料表與預設使用者、課程都存在；重複初始化不會增加種子資料；無效的外鍵寫入會被 SQLite 拒絕。</dd>
+      <dt>Session 生命週期</dt>
+      <dd>有效 token 可以驗證，偽造、過期或已登出的 token 會被拒絕；資料庫只保存 token 的 SHA-256 雜湊。</dd>
+      <dt>角色授權</dt>
+      <dd>管理員可以通過管理員檢查；學生嘗試管理員或老師的操作時，回傳 403。</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>驗證環境與結果</h2>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><th>作業系統</th><td>Windows，PowerShell</td></tr>
+          <tr><th>Python</th><td>3.13.7</td></tr>
+          <tr><th>套件</th><td>argon2-cffi 25.1.0、Playwright 1.63.0</td></tr>
+          <tr><th>瀏覽器</th><td>Microsoft Edge 154，無頭模式</td></tr>
+          <tr><th>結果</th><td>37 項全部通過</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>以上是測試報告記載的驗證結果；重新執行時，以當次結果為準。歷次修正與驗證限制請看<a href="https://github.com/smashcldew/_se/blob/main/Week7/test-report.md">測試報告</a>。</p>
+  </section>
+</main>
+
+<nav class="work-nav" id="work-nav" aria-label="其他作業"></nav>
+</body>
+</html>

@@ -10,6 +10,7 @@ from tkinter import messagebox, ttk
 from .indicators import kdj_series, moving_averages
 from .signals import Signal, detect_kdj_signals
 from .providers import DataProviderError, StockProvider, clear_cache
+from .dashboard import industry_changes, market_breadth
 from .storage import PriceStore, StorageError
 from .tables import leaderboard_rows
 from .industries import ALL_INDUSTRIES, INDUSTRIES, UNKNOWN_INDUSTRY
@@ -69,6 +70,19 @@ def _months_cutoff(today: date, months: int) -> date:
     year = today.year + ((today.month - 1 - offset) // 12)
     month = (today.month - 1 - offset) % 12 + 1
     return date(year, month, 1)
+
+
+def _cjk_font():  # type: ignore[no-untyped-def]
+    """A FontProperties able to render Chinese, or None to use the default."""
+    from matplotlib.font_manager import FontProperties, findfont
+    for family in ("Microsoft JhengHei", "Microsoft YaHei", "PingFang TC",
+                   "Noto Sans CJK TC", "Noto Sans CJK SC", "SimHei"):
+        try:
+            if findfont(FontProperties(family=family), fallback_to_default=False):
+                return FontProperties(family=family)
+        except Exception:
+            continue
+    return None
 
 
 def _chart_starts(dates: list[date], key) -> list[int]:
@@ -171,6 +185,7 @@ class StockFollowerWindow:
         leaderboard_controls = ttk.Frame(self.leaderboard_container)
         leaderboard_controls.grid(row=1, column=0, sticky="ew", pady=(8, 0))
         ttk.Button(leaderboard_controls, text="Show leaderboard", command=self.show_leaderboard).pack(anchor=tk.W)
+        ttk.Button(leaderboard_controls, text="市場儀表板", command=self.show_dashboard).pack(anchor=tk.W, pady=(4, 0))
         ttk.Label(leaderboard_controls, text="行業篩選：").pack(anchor=tk.W, pady=(4, 0))
         self.industry_filter = ttk.Combobox(
             leaderboard_controls, textvariable=self.industry,
@@ -513,6 +528,85 @@ class StockFollowerWindow:
         for row in rows:
             self.leaderboard_table.insert("", tk.END, values=row)
         self.leaderboard_status.set("Done." if rows else "此篩選條件沒有可用的排行資料。")
+
+    def show_dashboard(self) -> None:
+        refresh = self.leaderboard_refresh.get()
+
+        def work() -> tuple[dict, list]:
+            quotes = self.provider.leaderboard_quotes(refresh)
+            return market_breadth(quotes), industry_changes(quotes)
+
+        self._run(work, self._render_dashboard, status=self.leaderboard_status)
+
+    def _render_dashboard(self, result: tuple[dict, list]) -> None:
+        try:
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+        except ImportError:
+            self._show_error("Matplotlib is not installed. Run: python -m pip install -e .",
+                             self.leaderboard_status)
+            return
+
+        breadth, industries = result
+        window = getattr(self, "_dashboard_win", None)
+        if window is not None and window.winfo_exists():
+            for child in window.winfo_children():
+                child.destroy()
+        else:
+            window = tk.Toplevel(self.root)
+            self._dashboard_win = window
+        window.title("市場儀表板（上市）")
+        window.geometry("920x720")
+
+        adr = breadth["advance_decline_ratio"]
+        avg = breadth["avg_change_percent"]
+        cards = [
+            ("上漲 / 下跌 / 平盤", f"{breadth['advancers']} / {breadth['decliners']} / {breadth['unchanged']}"),
+            ("漲停 / 跌停（≥±9.9%）", f"{breadth['limit_up']} / {breadth['limit_down']}"),
+            ("騰落比 A/D", "-" if adr is None else f"{adr:.2f}"),
+            ("平均漲跌幅", "-" if avg is None else f"{avg:+.2f}%"),
+            ("總成交量", f"{breadth['total_volume']:,} 股"),
+            ("有效樣本 / 全部", f"{breadth['counted']} / {breadth['total']}"),
+        ]
+        header = ttk.Frame(window, padding=12)
+        header.pack(fill=tk.X)
+        for column, (label, value) in enumerate(cards):
+            header.columnconfigure(column, weight=1)
+            cell = ttk.Frame(header, padding=8)
+            cell.grid(row=0, column=column, sticky="nsew")
+            ttk.Label(cell, text=value, font=("Microsoft JhengHei", 15, "bold")).pack()
+            ttk.Label(cell, text=label).pack()
+
+        font = _cjk_font()
+        figure = Figure(figsize=(8, 5.5), dpi=100)
+        axis = figure.add_subplot(111)
+        top = industries[:15]
+        if top:
+            names = [row[0] for row in top]
+            values = [float(row[1]) for row in top]
+            # Taiwan convention: red for gains, green for losses.
+            colors = ["#d32f2f" if value >= 0 else "#2e7d32" for value in values]
+            positions = list(range(len(top)))
+            axis.barh(positions, values, color=colors)
+            axis.set_yticks(positions)
+            axis.set_yticklabels(names, fontproperties=font)
+            axis.invert_yaxis()  # strongest industry on top
+            axis.axvline(0, color="#888888", linewidth=0.8)
+            axis.set_xlabel("平均漲跌幅 (%)", fontproperties=font)
+            for position, value in zip(positions, values):
+                axis.text(value, position, f" {value:+.2f}", va="center",
+                          ha="left" if value >= 0 else "right", fontsize=8)
+        else:
+            axis.text(0.5, 0.5, "無可用產業資料", ha="center", va="center",
+                      fontproperties=font, transform=axis.transAxes)
+            axis.set_axis_off()
+        axis.set_title("各產業當日平均漲跌幅", fontproperties=font)
+        figure.subplots_adjust(left=0.22, right=0.97, top=0.92, bottom=0.1)
+
+        canvas = FigureCanvasTkAgg(figure, master=window)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        self.leaderboard_status.set("Done.")
 
     def run(self) -> None:
         self.root.mainloop()

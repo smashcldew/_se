@@ -20,7 +20,9 @@ TWSE_HISTORY = "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY"
 TWSE_COMPANIES = "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
 TPEX_OPENAPI = "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
 TPEX_HISTORY = "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock"
-CACHE_DIR = Path("data/cache")
+# Anchor the cache under the project root (HW3) so it is found no matter which
+# working directory the program is launched from.
+CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "cache"
 
 
 class DataProviderError(RuntimeError):

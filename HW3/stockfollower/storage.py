@@ -14,7 +14,9 @@ from pathlib import Path
 
 from .models import DailyBar, Quote
 
-DB_PATH = Path("data/stockfollower.db")
+# Anchor the database under the project root (HW3) so it is the same file no
+# matter which working directory the program is launched from.
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "stockfollower.db"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS quotes (

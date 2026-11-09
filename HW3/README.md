@@ -20,7 +20,17 @@ python -m stockfollower
 - `quotes`：每日報價摘要，欄位為 `symbol`、`name`、`market`、`trade_date`、`close`、`change`、`change_percent`、`volume`、`industry`，以 `(symbol, trade_date)` 為主鍵。
 - `daily_bars`：完整日線 OHLC，欄位為 `symbol`、`trade_date`、`open`、`high`、`low`、`close`、`volume`、`change`，以 `(symbol, trade_date)` 為主鍵。
 
-只有個股查詢（搜尋）會寫入資料庫：以該股最後一個交易日為日期存入當日報價與整段日線。排行榜查詢不會寫入資料庫。重複查詢相同代號與日期會覆寫（upsert）。價格以字串保存以保留 `Decimal` 精度。`stockfollower/storage.py` 的 `PriceStore` 另提供 `recent_prices()` 與 `saved_quotes()` 讀取介面。
+只有個股查詢（搜尋）會動用資料庫：以該股最後一個交易日為日期，存入當日報價與整段日線；排行榜查詢不會寫入資料庫。價格以字串保存以保留 `Decimal` 精度，重複查詢相同代號與日期會覆寫（upsert）。
+
+### 資料來源判斷（現場 vs 資料庫）
+
+資料庫另有 `fetch_log` 表，記錄每個代號「上次向官方 API 抓取的日期」。個股搜尋依此決定來源：
+
+- **當天第一次查該代號**（或勾選 `Refresh cache`）→ 向官方 API 下載，存入 DB，並更新 `fetch_log`；狀態列顯示「來源：現場下載」。
+- **同一天再查同一代號** → 直接讀 DB（不再連網）；狀態列顯示「來源：資料庫（日期 已更新）」。
+- 跨到新的一天，`fetch_log` 的日期不等於今天，就會重新打 API。
+
+每個代號各自記錄，所以當天查了某檔再查另一檔，新檔仍會正常地走 API。`stockfollower/storage.py` 的 `PriceStore` 提供 `record_fetch()`／`last_fetch()`、`prices_since()`、`latest_quote()`、`recent_prices()`、`saved_quotes()` 等介面。
 
 ## 介面
 
@@ -29,6 +39,15 @@ python -m stockfollower
 右側為排行榜區，可依成交量、漲幅或跌幅列出前 20 名。排行榜會透過[證交所上市公司基本資料](https://openapi.twse.com.tw/v1/opendata/t187ap03_L)取得產業別，並顯示中文行業名稱；`Show leaderboard` 按鈕下方提供行業篩選，選擇後自動顯示該行業的排行，選擇「全部行業」可恢復完整市場排行。沒有對應公司資料的個股顯示為「未分類」。行業資料下載失敗時會顯示錯誤，可再次查詢重試。
 
 GUI 左側為個股區（70%），右側為排行榜區（30%），視窗縮放時維持比例。兩區的查詢結果、更新快取選項與狀態各自獨立，排行榜不會覆蓋個股報告或 K 線。排行榜可水平捲動查看完整欄位。
+
+## 市場儀表板
+
+排行榜區的「市場儀表板」按鈕會另開一個視窗，整理上市（TWSE）全市場的概況，資料來自既有的全市場報價，不需額外來源：
+
+- 上方 KPI 卡：上漲／下跌／平盤家數、漲停／跌停家數（以 ±9.9% 近似台股漲跌幅上限）、騰落比（A/D）、全市場平均漲跌幅、總成交量、有效樣本數。
+- 下方長條圖：各產業當日平均漲跌幅，由強到弱排序，紅漲綠跌（台股慣例）。
+
+指標計算在 `stockfollower/dashboard.py` 的 `market_breadth()` 與 `industry_changes()`（純函式、可測試），繪圖沿用現有的 provider 與主執行緒佇列機制。圖表中文字型會自動挑選系統可用的字型（如微軟正黑體）。
 
 ## 下一階段
 

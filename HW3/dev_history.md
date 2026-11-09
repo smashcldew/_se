@@ -64,3 +64,22 @@
 - 狀態列顯示資料來源：「來源：現場下載」或「來源：資料庫（日期 已更新）」。
 - 排行榜維持不進資料庫。
 - 新增同日重查讀 DB、`Refresh cache` 強制走 API 的測試。驗證：`python -m pytest -q` 共 39 筆測試通過。
+
+## 2026-10-26：修正排行榜（及個股查詢）只有第一次有反應的問題
+
+- 根因：`_run` 的背景執行緒直接呼叫 `self.root.after(...)`，從工作執行緒操作 Tkinter 並不安全；在 Windows 上常導致第一次之後的 callback 排不進事件迴圈，狀態卡在「Loading...」而看似無反應。
+- 修正：工作執行緒只把 `(callback, payload)` 放進執行緒安全的 `queue.Queue`，由主執行緒的 `_poll_results`（啟動時以 `after(50, ...)` 排程、持續輪詢）取出並更新畫面；所有 Tk 操作都回到主執行緒。
+- 同步更新兩個以舊 `root.after` 遞送機制撰寫的測試，改為從佇列取出 callback 驗證。驗證：`python -m pytest -q` 共 39 筆測試通過；另以真實事件迴圈連點排行榜四次，每次皆正常觸發與更新。
+
+## 2026-10-26：新增市場儀表板（dev 分支）
+
+- 新增 `stockfollower/dashboard.py`：`market_breadth()`（上漲／下跌／平盤、漲停／跌停以 ±9.9% 近似、總量、平均漲跌幅、騰落比）與 `industry_changes()`（各產業平均漲跌幅、依強弱排序）；皆為純函式，用既有的 TWSE 全市場報價計算，不需新資料來源。
+- GUI 於排行榜區新增「市場儀表板」按鈕，另開 Toplevel 顯示 KPI 卡 + 各產業平均漲跌幅長條圖（紅漲綠跌）；沿用 provider 與主執行緒佇列機制，重複點擊重用同一視窗。
+- 中文字型以 `_cjk_font()` 自動挑選系統可用字型（微軟正黑體等），找不到則回退預設。
+- 新增 `tests/test_dashboard.py`（breadth 計數／邊界、產業平均與排序、GUI 接線）。驗證：`python -m pytest -q` 共 44 筆測試通過；另以真實事件迴圈煙霧測試儀表板開啟與重用，無崩潰。
+
+## 2026-10-27：資料路徑錨定專案根目錄（可攜性）
+
+- 原本 `CACHE_DIR = Path("data/cache")`、`DB_PATH = Path("data/stockfollower.db")` 是相對「執行時的 cwd」，換目錄啟動就會把快取／資料庫建到非預期位置。
+- 改為以套件位置錨定：`Path(__file__).resolve().parent.parent / "data" / ...`，永遠指向 `HW3/data`，不論從哪個工作目錄啟動。目的：整個 HW3 複製到任何地方、只要環境備妥即可執行。
+- 測試用 patch `CACHE_DIR`／傳入暫存 DB 路徑，不受預設值改動影響。驗證：44 筆測試通過；並從其他 cwd 載入確認路徑仍解析到 HW3/data。

@@ -153,8 +153,9 @@ Worker 的 CORS 來源原先填入佔位字串，而程式碼邏輯為 `env.ALLO
 
 | 項目 | 位置 |
 | --- | --- |
+| 前端網站 | <https://test-website-386.pages.dev> |
+| 後端 API | <https://blog-api.cldew20070210.workers.dev> |
 | 專案 repo | [smashcldew/test_website](https://github.com/smashcldew/test_website) |
-| 後端 API | `https://blog-api.cldew20070210.workers.dev` |
 
 ## 心得
 

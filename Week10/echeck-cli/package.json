@@ -1,0 +1,35 @@
+{
+  "name": "echeck-cli",
+  "version": "1.1.0",
+  "description": "Check that .env files, keys and other secrets are covered by .gitignore / .dockerignore / .npmignore, are not tracked by git, and do not leak into source code.",
+  "main": "src/index.js",
+  "bin": {
+    "echeck": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "README.zh-TW.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "env",
+    "dotenv",
+    "gitignore",
+    "dockerignore",
+    "npmignore",
+    "secrets",
+    "security",
+    "cli",
+    "leak"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "",
+  "license": "MIT"
+}
